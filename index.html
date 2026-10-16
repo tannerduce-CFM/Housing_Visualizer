@@ -1,13 +1,798 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My First Webpage</title>
+    <title>Companionship & House Visualizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .leaflet-container {
+            width: 100%;
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for side panel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
 </head>
-<body>
+<body class="h-full bg-slate-50 text-slate-800 antialiased flex flex-col">
 
-    <p>Using live server!! and testing with VS Code and github</p>
+    <!-- Notification Banner / Toast -->
+    <div id="toast" class="fixed top-5 right-5 z-50 transform translate-y-[-200%] transition-transform duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm">
+        <i id="toast-icon" class="fa-solid fa-circle-info text-sky-400"></i>
+        <span id="toast-message">Notification message here</span>
+    </div>
 
+    <!-- ==================== HOMESCREEN VIEW ==================== -->
+    <div id="home-view" class="flex-1 flex flex-col overflow-y-auto">
+        <!-- Hero Header -->
+        <header class="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white py-12 px-6 shadow-lg">
+            <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                    <div class="inline-flex items-center space-x-2 bg-indigo-700/50 border border-indigo-500/30 px-3 py-1 rounded-full text-xs font-medium text-indigo-200 mb-3">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                        <span>Geographic Intelligence & Housing Dashboard</span>
+                    </div>
+                    <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Companionship & House Visualizer</h1>
+                    <p class="mt-2 text-indigo-200 text-sm md:text-base max-w-xl">
+                        Upload your house datasets, boundary GeoJSON, and companionship coverage rules to explore spatial relationships interactively.
+                    </p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button onclick="loadMockData()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-3 rounded-xl shadow-lg hover:shadow-xl transition flex items-center justify-center space-x-2 text-sm">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>Load Quick-Start Mock Data</span>
+                    </button>
+                    <button onclick="downloadMockFiles()" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-medium px-4 py-3 rounded-xl transition flex items-center justify-center space-x-2 text-sm">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Download Templates</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Configuration Area -->
+        <main class="flex-1 max-w-5xl w-full mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-6">
+            
+            <!-- Card 1: Houses File -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition">
+                <div>
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4 text-lg">
+                        <i class="fa-solid fa-house"></i>
+                    </div>
+                    <h2 class="font-bold text-slate-900 text-lg">1. House List File</h2>
+                    <p class="text-xs text-slate-500 mt-1">JSON or CSV containing address, capacity, residents, cost, beds, baths, and lat/lng.</p>
+                    
+                    <div class="mt-4">
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload or Paste JSON</label>
+                        <input type="file" id="house-file-input" accept=".json,.csv" onchange="handleFileUpload(event, 'houses')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-3">
+                        <textarea id="house-json-input" rows="5" placeholder="Paste JSON data here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                    <span id="house-status">Status: No data loaded</span>
+                    <i class="fa-solid fa-circle-check text-slate-300" id="house-icon-status"></i>
+                </div>
+            </div>
+
+            <!-- Card 2: Boundaries GeoJSON -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition">
+                <div>
+                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4 text-lg">
+                        <i class="fa-solid fa-draw-polygon"></i>
+                    </div>
+                    <h2 class="font-bold text-slate-900 text-lg">2. Boundaries GeoJSON</h2>
+                    <p class="text-xs text-slate-500 mt-1">GeoJSON polygon file for regions (e.g., Fresno & Clovis areas).</p>
+                    
+                    <div class="mt-4">
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload or Paste GeoJSON</label>
+                        <input type="file" id="boundary-file-input" accept=".json,.geojson" onchange="handleFileUpload(event, 'boundaries')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer mb-3">
+                        <textarea id="boundary-json-input" rows="5" placeholder="Paste GeoJSON data here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                    <span id="boundary-status">Status: No data loaded</span>
+                    <i class="fa-solid fa-circle-check text-slate-300" id="boundary-icon-status"></i>
+                </div>
+            </div>
+
+            <!-- Card 3: Companionship Coverage Rules -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition">
+                <div>
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 text-lg">
+                        <i class="fa-solid fa-users-rectangle"></i>
+                    </div>
+                    <h2 class="font-bold text-slate-900 text-lg">3. Companionship Mapping</h2>
+                    <p class="text-xs text-slate-500 mt-1">JSON configuration mapping which companionships cover which boundaries.</p>
+                    
+                    <div class="mt-4">
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload or Paste JSON</label>
+                        <input type="file" id="mapping-file-input" accept=".json" onchange="handleFileUpload(event, 'mapping')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer mb-3">
+                        <textarea id="mapping-json-input" rows="5" placeholder="Paste mapping JSON here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                    <span id="mapping-status">Status: No data loaded</span>
+                    <i class="fa-solid fa-circle-check text-slate-300" id="mapping-icon-status"></i>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Go Button Bar -->
+        <footer class="bg-white border-t border-slate-200 py-6 px-6 text-center">
+            <div class="max-w-5xl mx-auto flex items-center justify-between">
+                <div class="text-xs text-slate-500">
+                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Quick Start will automatically populate Mock Data for Fresno, Clovis, and Companionships A, B, C.
+                </div>
+                <button onclick="launchMap()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition flex items-center space-x-3 text-base">
+                    <span>Launch Map Visualizer</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </footer>
+    </div>
+
+
+    <!-- ==================== MAP & VISUALIZER VIEW ==================== -->
+    <div id="map-view" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+        
+        <!-- Top Navigation / Search Bar Header -->
+        <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between z-20 shadow-sm flex-wrap gap-3">
+            <div class="flex items-center space-x-3">
+                <button onclick="returnToHome()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2.5 rounded-xl transition text-sm flex items-center space-x-2">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="hidden sm:inline">Back to Home</span>
+                </button>
+                <div class="h-6 w-px bg-slate-200"></div>
+                <h1 class="font-bold text-slate-800 text-base flex items-center space-x-2">
+                    <i class="fa-solid fa-map text-indigo-600"></i>
+                    <span>Geographic Visualizer</span>
+                </h1>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="flex-1 max-w-md mx-2 relative">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                </div>
+                <input type="text" id="search-input" oninput="handleSearch(this.value)" placeholder="Search houses, address, companionship (e.g., A), or area..." class="w-full pl-10 pr-4 py-2 bg-slate-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+                <div id="search-results-dropdown" class="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto hidden z-50"></div>
+            </div>
+
+            <!-- Quick Stats / Legend pill -->
+            <div class="hidden lg:flex items-center space-x-4 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                <span class="flex items-center"><i class="fa-solid fa-house text-indigo-600 mr-1.5"></i> <strong id="stat-house-count" class="text-slate-800 mr-1">0</strong> Houses</span>
+                <span class="flex items-center"><i class="fa-solid fa-draw-polygon text-amber-600 mr-1.5"></i> <strong id="stat-boundary-count" class="text-slate-800 mr-1">0</strong> Areas</span>
+                <span class="flex items-center"><i class="fa-solid fa-users text-emerald-600 mr-1.5"></i> <strong id="stat-comp-count" class="text-slate-800 mr-1">0</strong> Companionships</span>
+            </div>
+        </header>
+
+        <!-- Main Body: Map + Info Sidebar -->
+        <div class="flex-1 flex relative overflow-hidden">
+            <!-- Map Container -->
+            <div id="leaflet-map" class="flex-1 h-full z-10"></div>
+
+            <!-- Side Info Panel -->
+            <div id="info-panel" class="w-full md:w-96 bg-white border-l border-slate-200 shadow-2xl z-20 flex flex-col transform translate-x-full md:translate-x-0 transition-transform duration-300 absolute md:relative right-0 top-0 bottom-0">
+                <!-- Panel Header -->
+                <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                    <div class="flex items-center space-x-2">
+                        <div id="panel-icon" class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                            <i class="fa-solid fa-info text-sm"></i>
+                        </div>
+                        <div>
+                            <h3 id="panel-title" class="font-bold text-slate-800 text-sm">Overview</h3>
+                            <p id="panel-subtitle" class="text-xs text-slate-400">Click a house or area on the map</p>
+                        </div>
+                    </div>
+                    <button onclick="closeInfoPanel()" class="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-200/50 transition md:hidden">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Panel Content Body -->
+                <div id="panel-body" class="flex-1 overflow-y-auto p-5 space-y-5 text-sm text-slate-600">
+                    <div class="text-center py-12 text-slate-400">
+                        <i class="fa-solid fa-hand-pointer text-3xl mb-3 text-slate-300"></i>
+                        <p class="text-xs">Select any house marker (🏠) or boundary region on the map to inspect details, residents, and coverage areas.</p>
+                    </div>
+                </div>
+
+                <!-- Panel Footer / Quick action -->
+                <div class="p-4 border-t border-slate-100 bg-slate-50 text-xs text-slate-400 flex items-center justify-between">
+                    <span>Interactive Visualizer</span>
+                    <button onclick="resetMapHighlighting()" class="text-indigo-600 hover:underline font-medium">Reset Highlights</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+    <script>
+        // Global Application State
+        let appData = {
+            houses: null,
+            boundaries: null,
+            mapping: null
+        };
+
+        let map = null;
+        let houseMarkersLayer = null;
+        let boundaryLayersGroup = null;
+        let currentSelectedLayer = null;
+        let houseLayerMap = {}; // Maps house id to Leaflet Marker
+        let boundaryLayerMap = {}; // Maps boundary name to Leaflet Polygon
+
+        // Mock Data definitions
+        const mockHouses = [
+            {
+                id: "house-1",
+                address: "742 E Olive Ave (Tower District), Fresno, CA",
+                lat: 36.7410,
+                lng: -119.8000,
+                capacity: 4,
+                companionships: ["Companionship A"],
+                cost: 1500,
+                bedrooms: 2,
+                bathrooms: 2
+            },
+            {
+                id: "house-2",
+                address: "1250 E Shepherd Ave (Northern Clovis), Clovis, CA",
+                lat: 36.8535,
+                lng: -119.7020,
+                capacity: 4,
+                companionships: ["Companionship B"],
+                cost: 1500,
+                bedrooms: 2,
+                bathrooms: 2
+            }
+        ];
+
+        const mockBoundaries = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "name": "Tower District (Fresno)",
+                        "area_type": "Fresno Neighborhood"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [-119.8150, 36.7500],
+                                [-119.7850, 36.7500],
+                                [-119.7850, 36.7320],
+                                [-119.8150, 36.7320],
+                                [-119.8150, 36.7500]
+                            ]
+                        ]
+                    }
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "name": "Northern Clovis",
+                        "area_type": "Clovis District"
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [-119.7300, 36.8700],
+                                [-119.6700, 36.8700],
+                                [-119.6700, 36.8350],
+                                [-119.7300, 36.8350],
+                                [-119.7300, 36.8700]
+                            ]
+                        ]
+                    }
+                }
+            ]
+        };
+
+        const mockMapping = {
+            "Companionship A": ["Tower District (Fresno)"],
+            "Companionship B": ["Northern Clovis"],
+            "Companionship C": ["Tower District (Fresno)", "Northern Clovis"]
+        };
+
+        // Load Quick-Start Mock Data
+        function loadMockData() {
+            appData.houses = mockHouses;
+            appData.boundaries = mockBoundaries;
+            appData.mapping = mockMapping;
+
+            document.getElementById('house-json-input').value = JSON.stringify(mockHouses, null, 2);
+            document.getElementById('boundary-json-input').value = JSON.stringify(mockBoundaries, null, 2);
+            document.getElementById('mapping-json-input').value = JSON.stringify(mockMapping, null, 2);
+
+            updateStatusIndicators();
+            showToast("Mock data successfully loaded!", "success");
+        }
+
+        // Download Template Files
+        function downloadMockFiles() {
+            downloadJSON(mockHouses, "houses_template.json");
+            setTimeout(() => downloadJSON(mockBoundaries, "boundaries_template.geojson"), 300);
+            setTimeout(() => downloadJSON(mockMapping, "companionship_mapping_template.json"), 600);
+            showToast("Downloaded sample configuration files!", "info");
+        }
+
+        function downloadJSON(data, filename) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Handle File Uploads
+        function handleFileUpload(event, type) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                if (type === 'houses') {
+                    document.getElementById('house-json-input').value = content;
+                } else if (type === 'boundaries') {
+                    document.getElementById('boundary-json-input').value = content;
+                } else if (type === 'mapping') {
+                    document.getElementById('mapping-json-input').value = content;
+                }
+                showToast(`Loaded ${file.name}`, "success");
+            };
+            reader.readAsText(file);
+        }
+
+        function updateStatusIndicators() {
+            // Check house data
+            const houseVal = document.getElementById('house-json-input').value.trim();
+            if (houseVal) {
+                document.getElementById('house-status').innerText = "Status: Loaded";
+                document.getElementById('house-icon-status').className = "fa-solid fa-circle-check text-emerald-500";
+            }
+            const boundVal = document.getElementById('boundary-json-input').value.trim();
+            if (boundVal) {
+                document.getElementById('boundary-status').innerText = "Status: Loaded";
+                document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-emerald-500";
+            }
+            const mapVal = document.getElementById('mapping-json-input').value.trim();
+            if (mapVal) {
+                document.getElementById('mapping-status').innerText = "Status: Loaded";
+                document.getElementById('mapping-icon-status').className = "fa-solid fa-circle-check text-emerald-500";
+            }
+        }
+
+        // Toast notification helper
+        function showToast(message, type = "info") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.innerText = message;
+            if (type === "success") {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-info text-sky-400";
+            }
+
+            toast.classList.remove('translate-y-[-200%]');
+            setTimeout(() => {
+                toast.classList.add('translate-y-[-200%]');
+            }, 3500);
+        }
+
+        // Launch Map Transition
+        function launchMap() {
+            // Parse textareas
+            try {
+                const houseText = document.getElementById('house-json-input').value.trim();
+                const boundText = document.getElementById('boundary-json-input').value.trim();
+                const mapText = document.getElementById('mapping-json-input').value.trim();
+
+                if (!houseText || !boundText || !mapText) {
+                    // Auto load mock data if empty
+                    loadMockData();
+                } else {
+                    appData.houses = JSON.parse(houseText);
+                    appData.boundaries = JSON.parse(boundText);
+                    appData.mapping = JSON.parse(mapText);
+                }
+            } catch (err) {
+                showToast("Error parsing JSON data. Please check syntax.", "info");
+                console.error(err);
+                return;
+            }
+
+            // Switch views
+            document.getElementById('home-view').classList.add('hidden');
+            document.getElementById('map-view').classList.remove('hidden');
+
+            // Initialize Leaflet Map if not already initialized
+            setTimeout(() => {
+                initLeafletMap();
+            }, 100);
+        }
+
+        function returnToHome() {
+            document.getElementById('map-view').classList.add('hidden');
+            document.getElementById('home-view').classList.remove('hidden');
+        }
+
+        // Initialize Map
+        function initLeafletMap() {
+            if (!map) {
+                map = L.map('leaflet-map').setView([36.7800, -119.7500], 11);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(map);
+            } else {
+                map.invalidateSize();
+            }
+
+            renderMapLayers();
+        }
+
+        // Render Boundaries and Houses on Map
+        function renderMapLayers() {
+            // Clear existing layers
+            if (boundaryLayersGroup) map.removeLayer(boundaryLayersGroup);
+            if (houseMarkersLayer) map.removeLayer(houseMarkersLayer);
+
+            boundaryLayerMap = {};
+            houseLayerMap = {};
+
+            boundaryLayersGroup = L.layerGroup();
+            houseMarkersLayer = L.layerGroup();
+
+            // 1. Render Boundaries GeoJSON
+            if (appData.boundaries && appData.boundaries.features) {
+                L.geoJSON(appData.boundaries, {
+                    style: function(feature) {
+                        return {
+                            color: '#6366f1',
+                            weight: 2,
+                            fillColor: '#818cf8',
+                            fillOpacity: 0.25
+                        };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        const name = feature.properties.name || "Unnamed Area";
+                        boundaryLayerMap[name] = layer;
+
+                        layer.on('click', function(e) {
+                            L.DomEvent.stopPropagation(e);
+                            highlightBoundary(name);
+                        });
+
+                        layer.bindTooltip(`<strong>${name}</strong><br><span class="text-xs">Click to inspect area</span>`, { sticky: true });
+                    }
+                }).addTo(boundaryLayersGroup);
+            }
+
+            // 2. Render Houses with custom Emoji icon
+            if (appData.houses && Array.isArray(appData.houses)) {
+                appData.houses.forEach(house => {
+                    const houseIcon = L.divIcon({
+                        className: 'custom-house-marker',
+                        html: `<div style="background: white; border: 2px solid #4f46e5; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-size: 18px; cursor: pointer;">🏠</div>`,
+                        iconSize: [36, 36],
+                        iconAnchor: [18, 18]
+                    });
+
+                    const marker = L.marker([house.lat, house.lng], { icon: houseIcon });
+                    houseLayerMap[house.id] = marker;
+
+                    marker.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        highlightHouse(house.id);
+                    });
+
+                    marker.bindTooltip(`<strong>${house.address}</strong><br><span class="text-xs">Capacity: ${house.capacity}</span>`);
+                    houseMarkersLayer.addLayer(marker);
+                });
+            }
+
+            boundaryLayersGroup.addTo(map);
+            houseMarkersLayer.addTo(map);
+
+            // Update stats
+            document.getElementById('stat-house-count').innerText = appData.houses ? appData.houses.length : 0;
+            document.getElementById('stat-boundary-count').innerText = appData.boundaries && appData.boundaries.features ? appData.boundaries.features.length : 0;
+            
+            // Count unique companionships
+            let comps = new Set();
+            if (appData.mapping) {
+                Object.keys(appData.mapping).forEach(c => comps.add(c));
+            }
+            if (appData.houses) {
+                appData.houses.forEach(h => {
+                    if (h.companionships) h.companionships.forEach(c => comps.add(c));
+                });
+            }
+            document.getElementById('stat-comp-count').innerText = comps.size;
+        }
+
+        // ==================== INTERACTIVE HIGHLIGHTING & INFO PANEL ==================== //
+
+        function highlightHouse(houseId) {
+            const house = appData.houses.find(h => h.id === houseId);
+            if (!house) return;
+
+            resetMapHighlighting();
+
+            // Highlight Marker
+            const marker = houseLayerMap[houseId];
+            if (marker) {
+                map.setView([house.lat, house.lng], 14, { animate: true });
+            }
+
+            // Find boundaries covered by companionships living in this house
+            let coveredBoundaries = new Set();
+            if (house.companionships) {
+                house.companionships.forEach(comp => {
+                    const assignedAreas = appData.mapping[comp] || [];
+                    assignedAreas.forEach(area => coveredBoundaries.add(area));
+                });
+            }
+
+            // Highlight corresponding boundary layers
+            coveredBoundaries.forEach(areaName => {
+                const bLayer = boundaryLayerMap[areaName];
+                if (bLayer) {
+                    bLayer.setStyle({
+                        color: '#10b981',
+                        fillColor: '#34d399',
+                        fillOpacity: 0.5,
+                        weight: 3
+                    });
+                }
+            });
+
+            // Populate Info Panel for House
+            const panelTitle = document.getElementById('panel-title');
+            const panelSubtitle = document.getElementById('panel-subtitle');
+            const panelIcon = document.getElementById('panel-icon');
+            const panelBody = document.getElementById('panel-body');
+
+            panelIcon.className = "w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-base";
+            panelIcon.innerHTML = `<i class="fa-solid fa-house"></i>`;
+            panelTitle.innerText = house.address;
+            panelSubtitle.innerText = "House Details & Coverage";
+
+            let compsHtml = house.companionships && house.companionships.length > 0 
+                ? house.companionships.map(c => `<span class="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1">${c}</span>`).join('')
+                : '<span class="text-slate-400 italic">None assigned</span>';
+
+            let boundsHtml = coveredBoundaries.size > 0
+                ? Array.from(coveredBoundaries).map(b => `<span class="bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-draw-polygon mr-1"></i>${b}</span>`).join('')
+                : '<span class="text-slate-400 italic">No assigned boundary coverage</span>';
+
+            panelBody.innerHTML = `
+                <div class="space-y-4">
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                        <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
+                            <span>Monthly Rent</span>
+                            <strong class="text-slate-900 text-sm">$${house.cost || 'N/A'}</strong>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
+                            <span>Capacity</span>
+                            <strong class="text-slate-900 text-sm">${house.capacity || 'N/A'} residents</strong>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
+                            <span>Bedrooms / Bathrooms</span>
+                            <strong class="text-slate-900 text-sm">${house.bedrooms || '-'} Beds / ${house.bathrooms || '-'} Baths</strong>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-slate-500">
+                            <span>GPS Coordinates</span>
+                            <strong class="text-slate-700 font-mono text-xs">${house.lat.toFixed(4)}, ${house.lng.toFixed(4)}</strong>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships Living Here</h4>
+                        <div>${compsHtml}</div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Covered Boundaries (Highlighted)</h4>
+                        <div>${boundsHtml}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function highlightBoundary(areaName) {
+            resetMapHighlighting();
+
+            const bLayer = boundaryLayerMap[areaName];
+            if (bLayer) {
+                bLayer.setStyle({
+                    color: '#f59e0b',
+                    fillColor: '#fbbf24',
+                    fillOpacity: 0.5,
+                    weight: 3
+                });
+                map.fitBounds(bLayer.getBounds(), { padding: [50, 50], animate: true });
+            }
+
+            // Find which companionships cover this boundary
+            let coveringComps = [];
+            if (appData.mapping) {
+                Object.keys(appData.mapping).forEach(comp => {
+                    const areas = appData.mapping[comp];
+                    if (areas && areas.includes(areaName)) {
+                        coveringComps.push(comp);
+                    }
+                });
+            }
+
+            // Find which houses these companionships live in
+            let residentHouses = [];
+            if (appData.houses) {
+                appData.houses.forEach(house => {
+                    if (house.companionships) {
+                        const matches = house.companionships.some(c => coveringComps.includes(c));
+                        if (matches) {
+                            residentHouses.push(house);
+                        }
+                    }
+                });
+            }
+
+            // Populate Info Panel for Area
+            const panelTitle = document.getElementById('panel-title');
+            const panelSubtitle = document.getElementById('panel-subtitle');
+            const panelIcon = document.getElementById('panel-icon');
+            const panelBody = document.getElementById('panel-body');
+
+            panelIcon.className = "w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-base";
+            panelIcon.innerHTML = `<i class="fa-solid fa-draw-polygon"></i>`;
+            panelTitle.innerText = areaName;
+            panelSubtitle.innerText = "Area Coverage & Resident Houses";
+
+            let compsHtml = coveringComps.length > 0
+                ? coveringComps.map(c => `<span class="bg-amber-50 text-amber-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
+                : '<span class="text-slate-400 italic">No companionships assigned</span>';
+
+            let housesHtml = residentHouses.length > 0
+                ? residentHouses.map(h => `
+                    <div onclick="highlightHouse('${h.id}')" class="p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 rounded-xl cursor-pointer transition mb-2">
+                        <div class="font-semibold text-slate-800 text-xs flex items-center">
+                            <i class="fa-solid fa-house text-indigo-600 mr-2"></i> ${h.address}
+                        </div>
+                        <div class="text-xs text-slate-500 mt-1 flex justify-between">
+                            <span>Residents: ${h.companionships.join(', ')}</span>
+                            <span class="font-medium text-indigo-600">Inspect &rarr;</span>
+                        </div>
+                    </div>
+                `).join('')
+                : '<span class="text-slate-400 italic">No houses registered in this region</span>';
+
+            panelBody.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships Covering This Area</h4>
+                        <div>${compsHtml}</div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Where They Live (Houses)</h4>
+                        <div class="space-y-2">${housesHtml}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function resetMapHighlighting() {
+            if (appData.boundaries && boundaryLayersGroup) {
+                boundaryLayersGroup.eachLayer(layer => {
+                    layer.setStyle({
+                        color: '#6366f1',
+                        weight: 2,
+                        fillColor: '#818cf8',
+                        fillOpacity: 0.25
+                    });
+                });
+            }
+        }
+
+        function closeInfoPanel() {
+            // Mobile toggle or reset
+        }
+
+        // Search Bar Functionality
+        function handleSearch(query) {
+            const dropdown = document.getElementById('search-results-dropdown');
+            if (!query.trim()) {
+                dropdown.classList.add('hidden');
+                dropdown.innerHTML = '';
+                return;
+            }
+
+            const q = query.toLowerCase();
+            let results = [];
+
+            // Search houses
+            if (appData.houses) {
+                appData.houses.forEach(h => {
+                    if (h.address.toLowerCase().includes(q) || (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))) {
+                        results.push({ type: 'house', title: h.address, subtitle: `House • Residents: ${h.companionships.join(', ')}`, id: h.id });
+                    }
+                });
+            }
+
+            // Search boundaries
+            if (appData.boundaries && appData.boundaries.features) {
+                appData.boundaries.features.forEach(f => {
+                    const name = f.properties.name || "";
+                    if (name.toLowerCase().includes(q)) {
+                        results.push({ type: 'boundary', title: name, subtitle: 'Area / Boundary', id: name });
+                    }
+                });
+            }
+
+            if (results.length === 0) {
+                dropdown.innerHTML = `<div class="p-3 text-xs text-slate-400 text-center">No matching results found</div>`;
+                dropdown.classList.remove('hidden');
+                return;
+            }
+
+            dropdown.innerHTML = results.map(r => `
+                <div onclick="selectSearchResult('${r.type}', '${r.id}')" class="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-none">
+                    <div class="text-xs font-semibold text-slate-800 flex items-center">
+                        <i class="fa-solid ${r.type === 'house' ? 'fa-house text-indigo-600' : 'fa-draw-polygon text-amber-600'} mr-2"></i>
+                        ${r.title}
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5 ml-5">${r.subtitle}</div>
+                </div>
+            `).join('');
+
+            dropdown.classList.remove('hidden');
+        }
+
+        function selectSearchResult(type, id) {
+            document.getElementById('search-results-dropdown').classList.add('hidden');
+            document.getElementById('search-input').value = '';
+
+            if (type === 'house') {
+                highlightHouse(id);
+            } else if (type === 'boundary') {
+                highlightBoundary(id);
+            }
+        }
+    </script>
 </body>
 </html>
