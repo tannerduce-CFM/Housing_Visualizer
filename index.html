@@ -57,7 +57,7 @@
                     </div>
                     <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Companionship & House Visualizer</h1>
                     <p class="mt-2 text-indigo-200 text-sm md:text-base max-w-xl">
-                        Upload Excel rosters (.xlsx), CSV, JSON house datasets, boundaries GeoJSON, and companionship rules to explore spatial relationships interactively.
+                        Upload Excel rosters or housing files (`houselistoct.xlsx`), boundaries GeoJSON, and companionship mapping to explore spatial relationships interactively.
                     </p>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-3">
@@ -83,12 +83,12 @@
                         <i class="fa-solid fa-house"></i>
                     </div>
                     <h2 class="font-bold text-slate-900 text-lg">1. House List File</h2>
-                    <p class="text-xs text-slate-500 mt-1">Excel (.xlsx), CSV, or JSON containing address, capacity, residents, cost, lat/lng, or roster info.</p>
+                    <p class="text-xs text-slate-500 mt-1">Excel (`houselistoct.xlsx`), CSV, or JSON with address, rent, capacity, beds/baths, & zone.</p>
                     
                     <div class="mt-4">
                         <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload Excel / CSV / JSON</label>
                         <input type="file" id="house-file-input" accept=".json,.csv,.xlsx,.xls" onchange="handleFileUpload(event, 'houses')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-3">
-                        <textarea id="house-json-input" rows="5" placeholder="Paste or parsed JSON data here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                        <textarea id="house-json-input" rows="5" placeholder="Parsed JSON house data will appear here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
@@ -145,7 +145,7 @@
         <footer class="bg-white border-t border-slate-200 py-6 px-6 text-center">
             <div class="max-w-5xl mx-auto flex items-center justify-between">
                 <div class="text-xs text-slate-500">
-                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Supports Excel (.xlsx), CSV, and JSON data with resilient automatic parsing.
+                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Supports `houselistoct.xlsx` with automatic Beds/Baths extraction & address geocoding.
                 </div>
                 <button onclick="launchMap()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition flex items-center space-x-3 text-base">
                     <span>Launch Map Visualizer</span>
@@ -248,16 +248,16 @@
 
         // Zone Center Coordinates Fallback Map
         const zoneCoordinates = {
-            'fresno': [36.7468, -119.7726],
-            'fresno east': [36.7550, -119.7000],
-            'fresno north': [36.8400, -119.7800],
-            'fresno west': [36.7600, -119.8300],
-            'hanford': [36.3275, -119.6457],
-            'madera': [36.9613, -120.0607],
-            'merced': [37.3022, -120.4830],
-            'porterville': [36.0652, -119.0168],
-            'reedley': [36.5963, -119.4504],
-            'visalia': [36.3302, -119.2921],
+            'f': [36.7468, -119.7726],   // Fresno
+            'fe': [36.7550, -119.7000],  // Fresno East
+            'fn': [36.8400, -119.7800],  // Fresno North
+            'fw': [36.7600, -119.8300],  // Fresno West
+            'm': [37.0500, -120.0000],   // Merced / Chowchilla / Mariposa
+            'ma': [36.9613, -120.0607],  // Madera
+            'h': [36.3275, -119.6457],   // Hanford
+            'r': [36.5963, -119.4504],   // Reedley
+            'v': [36.3302, -119.2921],   // Visalia
+            'p': [36.0652, -119.0168],   // Porterville
             'clovis': [36.8252, -119.7029]
         };
 
@@ -266,26 +266,26 @@
             {
                 id: "house-1",
                 address: "742 E Olive Ave (Tower District), Fresno, CA",
-                zone: "Fresno",
+                zone: "F",
                 lat: 36.7410,
                 lng: -119.8000,
                 capacity: 4,
                 companionships: ["Tower District Area 1"],
-                cost: 1500,
-                bedrooms: 2,
-                bathrooms: 2
+                cost: "$1,500.00",
+                bedrooms: "2",
+                bathrooms: "2"
             },
             {
                 id: "house-2",
                 address: "1250 E Shepherd Ave (Northern Clovis), Clovis, CA",
-                zone: "Clovis",
+                zone: "FN",
                 lat: 36.8535,
                 lng: -119.7020,
                 capacity: 4,
                 companionships: ["Northern Clovis Area 2"],
-                cost: 1500,
-                bedrooms: 2,
-                bathrooms: 2
+                cost: "$1,500.00",
+                bedrooms: "2",
+                bathrooms: "2"
             }
         ];
 
@@ -405,7 +405,6 @@
                 };
                 reader.readAsText(file);
             } else {
-                // Default JSON / GeoJSON reading
                 reader.onload = function(e) {
                     try {
                         const content = e.target.result;
@@ -426,6 +425,42 @@
             }
         }
 
+        // Helper regex to decode combined Beds/Baths strings (e.g., "2+1.5", "2 bed 1 half bath", "2+2   There is an office...")
+        function parseBedsBaths(rawStr) {
+            if (!rawStr) return { bedrooms: "-", bathrooms: "-" };
+            const text = String(rawStr).trim();
+
+            // Pattern 1: e.g. "2+1.5", "3 + 2", "0+2"
+            const matchPlus = text.match(/(\d+(?:\.\d+)?)\s*\+\s*(\d+(?:\.\d+)?)/);
+            if (matchPlus) {
+                return { bedrooms: matchPlus[1], bathrooms: matchPlus[2] };
+            }
+
+            // Pattern 2: e.g. "2 bed 1 half bath" or "3 beds 2 baths"
+            let beds = "-";
+            const matchBed = text.match(/(\d+)\s*bed[s]?/i);
+            if (matchBed) beds = matchBed[1];
+
+            let baths = "-";
+            if (/half\s*bath/i.test(text)) {
+                baths = "1.5";
+            } else {
+                const matchBath = text.match(/(\d+(?:\.\d+)?)\s*bath/i);
+                if (matchBath) baths = matchBath[1];
+            }
+
+            return { bedrooms: beds, bathrooms: baths };
+        }
+
+        // Helper to format rent values like "1,420.00 USD" -> "$1,420.00"
+        function formatRent(rawRent) {
+            if (!rawRent) return "N/A";
+            const str = String(rawRent).trim();
+            if (str.startsWith('$')) return str;
+            const num = str.replace(/[^\d.]/g, '');
+            return num ? `$${num}` : str;
+        }
+
         // Process Excel Spreadsheet Data Safely
         function processExcelWorkbook(workbook, uploadType, filename) {
             try {
@@ -434,16 +469,17 @@
                 const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
                 if (!rawRows || rawRows.length === 0) {
-                    showToast(`The uploaded sheet "${sheetName}" contains no data.`, "info");
+                    showToast(`The sheet "${sheetName}" contains no rows.`, "info");
                     return;
                 }
 
-                // Parse Roster / Spreadsheet Data
                 const { houses, mappings, warnings } = parseRosterSpreadsheet(rawRows);
 
                 if (houses.length > 0) {
                     document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
                     appData.houses = houses;
+                    // Trigger async background geocoding for houses with missing GPS
+                    geocodeHouseAddresses(houses);
                 }
                 if (Object.keys(mappings).length > 0) {
                     document.getElementById('mapping-json-input').value = JSON.stringify(mappings, null, 2);
@@ -452,10 +488,7 @@
 
                 updateStatusIndicators();
 
-                let msg = `Loaded "${filename}": ${houses.length} houses, ${Object.keys(mappings).length} area mappings extracted.`;
-                if (warnings.length > 0) {
-                    msg += ` (${warnings.length} minor row warning(s) handled safely)`;
-                }
+                let msg = `Loaded "${filename}": ${houses.length} houses processed.`;
                 showToast(msg, "success");
 
             } catch (err) {
@@ -464,13 +497,12 @@
             }
         }
 
-        // Flexible Column Recognition for Rosters (like DefaultTeachingAreas.xlsx)
+        // Flexible Column Recognition for Rosters (`houselistoct.xlsx` & `DefaultTeachingAreas.xlsx`)
         function parseRosterSpreadsheet(rows) {
             const housesMap = {};
             const mappingsMap = {};
             const warnings = [];
 
-            // Safe column lookup helper
             function getRowVal(row, candidates) {
                 const rowKeys = Object.keys(row);
                 for (let cand of candidates) {
@@ -485,71 +517,99 @@
 
             rows.forEach((row, idx) => {
                 try {
-                    const zone = getRowVal(row, ['zone']);
-                    const district = getRowVal(row, ['district']);
-                    const area = getRowVal(row, ['area']);
-                    const car = getRowVal(row, ['car']);
-                    const missionaries = getRowVal(row, ['missionaries', 'missionary', 'residents']);
-                    const phone = getRowVal(row, ['phone', 'mobile', 'contact']);
-                    const houseName = getRowVal(row, ['house name', 'house', 'residence', 'address']);
-                    const units = getRowVal(row, ['ecclesiastical unit', 'ecclesiastical', 'unit', 'boundaries', 'regions']);
+                    const houseName = getRowVal(row, ['house name', 'house', 'residence']);
+                    const status = getRowVal(row, ['status']);
+                    const streetAddress = getRowVal(row, ['street address', 'street', 'address']);
+                    const cityState = getRowVal(row, ['city, state', 'city', 'state']);
+                    const teachingAreas = getRowVal(row, ['teaching area', 'area', 'missionaries', 'companionship']);
+                    const maxCap = getRowVal(row, ['max capacity', 'capacity']);
+                    const rentVal = getRowVal(row, ['lease rent amount', 'rent', 'cost']);
+                    const bedsBathsVal = getRowVal(row, ['beds/baths', 'beds', 'baths']);
+                    const zoneVal = getRowVal(row, ['zone']);
+                    const districtVal = getRowVal(row, ['district']);
+                    const phoneVal = getRowVal(row, ['phone', 'contact']);
+                    const carVal = getRowVal(row, ['car']);
+                    const unitsVal = getRowVal(row, ['ecclesiastical unit', 'ecclesiastical', 'boundaries']);
                     const latVal = parseFloat(getRowVal(row, ['lat', 'latitude']));
                     const lngVal = parseFloat(getRowVal(row, ['lng', 'lon', 'longitude']));
 
-                    if (!area && !houseName) {
+                    if (!teachingAreas && !houseName && !streetAddress) {
                         warnings.push(`Row ${idx + 2}: Empty or unmapped row.`);
                         return;
                     }
 
-                    const compName = area || missionaries || `Area ${idx + 1}`;
+                    // Full address string construction
+                    let fullAddress = houseName || streetAddress;
+                    if (streetAddress && cityState) {
+                        fullAddress = `${streetAddress.replace(/\r?\n|\r/g, ' ')}, ${cityState}`;
+                    } else if (streetAddress) {
+                        fullAddress = streetAddress.replace(/\r?\n|\r/g, ' ');
+                    }
 
-                    // Extract Companionship -> Area Mappings
-                    if (compName && units) {
-                        const unitList = units.split(',').map(u => u.trim()).filter(u => u.length > 0);
-                        if (!mappingsMap[compName]) mappingsMap[compName] = [];
-                        unitList.forEach(u => {
-                            if (!mappingsMap[compName].includes(u)) {
-                                mappingsMap[compName].push(u);
-                            }
+                    // Parse Beds / Baths
+                    const { bedrooms, bathrooms } = parseBedsBaths(bedsBathsVal);
+
+                    // Parse Companionships / Teaching Areas
+                    let compList = [];
+                    if (teachingAreas) {
+                        compList = teachingAreas.split(',').map(a => a.trim()).filter(a => a.length > 0);
+                    }
+
+                    // Extract Companionship -> Boundary mappings
+                    if (compList.length > 0 && unitsVal) {
+                        const unitList = unitsVal.split(',').map(u => u.trim()).filter(u => u.length > 0);
+                        compList.forEach(comp => {
+                            if (!mappingsMap[comp]) mappingsMap[comp] = [];
+                            unitList.forEach(u => {
+                                if (!mappingsMap[comp].includes(u)) mappingsMap[comp].push(u);
+                            });
                         });
                     }
 
-                    // Extract & Group Houses
-                    if (houseName) {
-                        if (!housesMap[houseName]) {
-                            // Calculate or lookup lat/lng
+                    // Register House
+                    if (fullAddress) {
+                        const houseKey = houseName || fullAddress;
+                        if (!housesMap[houseKey]) {
                             let lat = !isNaN(latVal) ? latVal : null;
                             let lng = !isNaN(lngVal) ? lngVal : null;
 
                             if (lat === null || lng === null) {
-                                const zoneKey = (zone || '').toLowerCase().trim();
+                                const zoneKey = (zoneVal || '').toLowerCase().trim();
                                 const baseCoords = zoneCoordinates[zoneKey] || [36.7800, -119.7500];
                                 const offsetCount = Object.keys(housesMap).length;
-                                // Create slight geometric offsets for houses in the same zone so markers scatter nicely
                                 lat = baseCoords[0] + ((offsetCount % 7) - 3) * 0.008;
                                 lng = baseCoords[1] + (Math.floor(offsetCount / 7) % 7 - 3) * 0.008;
                             }
 
-                            housesMap[houseName] = {
+                            housesMap[houseKey] = {
                                 id: `house-${Object.keys(housesMap).length + 1}`,
-                                address: houseName,
-                                zone: zone || 'Unassigned Zone',
-                                district: district || '',
+                                name: houseName || fullAddress,
+                                address: fullAddress,
+                                streetQuery: `${streetAddress || houseName}, ${cityState || 'Fresno, CA'}`,
+                                zone: zoneVal || 'Unassigned',
+                                district: districtVal || '',
+                                status: status || 'Open',
+                                cost: formatRent(rentVal),
+                                capacity: maxCap || 2,
+                                bedrooms: bedrooms,
+                                bathrooms: bathrooms,
                                 lat: lat,
                                 lng: lng,
-                                capacity: 2,
                                 companionships: [],
                                 phones: [],
-                                car: car,
-                                missionaries: missionaries
+                                car: carVal,
+                                isGeocoded: !isNaN(latVal) && !isNaN(lngVal)
                             };
                         }
 
-                        if (compName && !housesMap[houseName].companionships.includes(compName)) {
-                            housesMap[houseName].companionships.push(compName);
-                        }
-                        if (phone && !housesMap[houseName].phones.includes(phone)) {
-                            housesMap[houseName].phones.push(phone);
+                        compList.forEach(c => {
+                            if (!housesMap[houseKey].companionships.includes(c)) {
+                                housesMap[houseKey].companionships.push(c);
+                            }
+                        });
+
+                        if (phoneVal && !housesMap[houseKey].phones.includes(phoneVal)) {
+                            housesMap[houseKey].phones.push(phoneVal);
                         }
                     }
 
@@ -563,6 +623,48 @@
                 mappings: mappingsMap,
                 warnings: warnings
             };
+        }
+
+        // Automatic Background Geocoding via OpenStreetMap Nominatim API
+        async function geocodeHouseAddresses(houses) {
+            let geocodedCount = 0;
+            for (let house of houses) {
+                if (house.isGeocoded || !house.streetQuery) continue;
+
+                // Clean unit numbers/floor notes for accurate geocoding query
+                let cleanQuery = house.streetQuery
+                    .replace(/#[^\s,]+/g, '')
+                    .replace(/\d+nd floor.*/gi, '')
+                    .replace(/\r?\n|\r/g, ' ')
+                    .trim();
+
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanQuery)}`);
+                    const results = await response.json();
+
+                    if (results && results.length > 0) {
+                        house.lat = parseFloat(results[0].lat);
+                        house.lng = parseFloat(results[0].lon);
+                        house.isGeocoded = true;
+                        geocodedCount++;
+
+                        // Refresh map marker dynamically if map is active
+                        if (map && houseLayerMap[house.id]) {
+                            houseLayerMap[house.id].setLatLng([house.lat, house.lng]);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`Geocoding skipped for ${house.address}:`, err);
+                }
+
+                // Respect Nominatim rate limit (1 req per sec)
+                await new Promise(resolve => setTimeout(resolve, 1100));
+            }
+
+            if (geocodedCount > 0) {
+                document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
+                showToast(`Geocoded exact GPS location for ${geocodedCount} house address(es)!`, "success");
+            }
         }
 
         function updateStatusIndicators() {
@@ -712,7 +814,7 @@
                             highlightHouse(house.id);
                         });
 
-                        const houseTitle = house.address || 'House Location';
+                        const houseTitle = house.name || house.address || 'House Location';
                         const zoneLabel = house.zone ? `Zone: ${house.zone}` : '';
                         marker.bindTooltip(`<strong>${houseTitle}</strong><br><span class="text-xs">${zoneLabel}</span>`);
                         houseMarkersLayer.addLayer(marker);
@@ -750,14 +852,13 @@
             // Highlight Marker
             const marker = houseLayerMap[houseId];
             if (marker && house.lat && house.lng) {
-                map.setView([house.lat, house.lng], 13, { animate: true });
+                map.setView([house.lat, house.lng], 14, { animate: true });
             }
 
             // Find boundaries covered
             let coveredBoundaries = new Set();
             if (house.companionships && appData.mapping) {
                 house.companionships.forEach(comp => {
-                    // Direct match or partial key lookup
                     const assignedAreas = appData.mapping[comp] || [];
                     assignedAreas.forEach(area => coveredBoundaries.add(area));
                 });
@@ -784,16 +885,12 @@
 
             panelIcon.className = "w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-base";
             panelIcon.innerHTML = `<i class="fa-solid fa-house"></i>`;
-            panelTitle.innerText = house.address || 'House Details';
+            panelTitle.innerText = house.name || house.address || 'House Details';
             panelSubtitle.innerText = house.zone ? `Zone: ${house.zone}` : "House Details & Coverage";
 
             let compsHtml = house.companionships && house.companionships.length > 0 
                 ? house.companionships.map(c => `<span class="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1">${c}</span>`).join('')
                 : '<span class="text-slate-400 italic">None assigned</span>';
-
-            let phonesHtml = house.phones && house.phones.length > 0
-                ? house.phones.join(', ')
-                : 'N/A';
 
             let boundsHtml = coveredBoundaries.size > 0
                 ? Array.from(coveredBoundaries).map(b => `<span class="bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-draw-polygon mr-1"></i>${b}</span>`).join('')
@@ -803,30 +900,34 @@
                 <div class="space-y-4">
                     <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
                         <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
-                            <span>Zone / District</span>
-                            <strong class="text-slate-900 text-sm">${house.zone || 'N/A'} ${house.district ? ' (' + house.district + ')' : ''}</strong>
+                            <span>Street Address</span>
+                            <strong class="text-slate-900 text-xs text-right max-w-[180px]">${house.address || 'N/A'}</strong>
                         </div>
                         <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
-                            <span>Phone Contact</span>
-                            <strong class="text-slate-900 text-xs font-mono">${phonesHtml}</strong>
+                            <span>Monthly Rent</span>
+                            <strong class="text-slate-900 text-sm font-semibold">${house.cost || 'N/A'}</strong>
                         </div>
                         <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
-                            <span>Vehicle / Car</span>
-                            <strong class="text-slate-900 text-sm">${house.car || 'N/A'}</strong>
+                            <span>Bedrooms / Bathrooms</span>
+                            <strong class="text-slate-900 text-sm">${house.bedrooms || '-'} Beds / ${house.bathrooms || '-'} Baths</strong>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
+                            <span>Max Capacity / Status</span>
+                            <strong class="text-slate-900 text-sm">${house.capacity || '-'} (${house.status || 'Open'})</strong>
                         </div>
                         <div class="flex justify-between items-center text-xs text-slate-500">
-                            <span>GPS Location</span>
-                            <strong class="text-slate-700 font-mono text-xs">${house.lat ? house.lat.toFixed(4) : '-'}, ${house.lng ? house.lng.toFixed(4) : '-'}</strong>
+                            <span>Zone</span>
+                            <strong class="text-slate-700 font-mono text-xs">${house.zone || 'Unassigned'}</strong>
                         </div>
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships / Areas Living Here</h4>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Teaching Areas / Companionships</h4>
                         <div>${compsHtml}</div>
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Covered Units / Areas</h4>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Covered Units / Regions</h4>
                         <div>${boundsHtml}</div>
                     </div>
                 </div>
@@ -887,10 +988,10 @@
                 ? residentHouses.map(h => `
                     <div onclick="highlightHouse('${h.id}')" class="p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 rounded-xl cursor-pointer transition mb-2">
                         <div class="font-semibold text-slate-800 text-xs flex items-center">
-                            <i class="fa-solid fa-house text-indigo-600 mr-2"></i> ${h.address}
+                            <i class="fa-solid fa-house text-indigo-600 mr-2"></i> ${h.name || h.address}
                         </div>
                         <div class="text-xs text-slate-500 mt-1 flex justify-between">
-                            <span>Area: ${h.companionships ? h.companionships.join(', ') : 'N/A'}</span>
+                            <span>Areas: ${h.companionships ? h.companionships.join(', ') : 'N/A'}</span>
                             <span class="font-medium text-indigo-600">Inspect &rarr;</span>
                         </div>
                     </div>
@@ -944,14 +1045,15 @@
             if (appData.houses) {
                 appData.houses.forEach(h => {
                     if (
+                        (h.name && h.name.toLowerCase().includes(q)) ||
                         (h.address && h.address.toLowerCase().includes(q)) ||
                         (h.zone && h.zone.toLowerCase().includes(q)) ||
                         (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))
                     ) {
                         results.push({
                             type: 'house',
-                            title: h.address || 'House',
-                            subtitle: `House • Zone: ${h.zone || 'N/A'} • ${h.companionships ? h.companionships.join(', ') : ''}`,
+                            title: h.name || h.address || 'House',
+                            subtitle: `House • Zone: ${h.zone || 'N/A'} • Areas: ${h.companionships ? h.companionships.join(', ') : 'None'}`,
                             id: h.id
                         });
                     }
