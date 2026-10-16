@@ -12,6 +12,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS (xlsx) for parsing Excel files (.xlsx, .xls, .csv) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         .leaflet-container {
             width: 100%;
@@ -38,8 +40,8 @@
 <body class="h-full bg-slate-50 text-slate-800 antialiased flex flex-col">
 
     <!-- Notification Banner / Toast -->
-    <div id="toast" class="fixed top-5 right-5 z-50 transform translate-y-[-200%] transition-transform duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm">
-        <i id="toast-icon" class="fa-solid fa-circle-info text-sky-400"></i>
+    <div id="toast" class="fixed top-5 right-5 z-50 transform translate-y-[-200%] transition-transform duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm max-w-md">
+        <i id="toast-icon" class="fa-solid fa-circle-info text-sky-400 text-base"></i>
         <span id="toast-message">Notification message here</span>
     </div>
 
@@ -55,7 +57,7 @@
                     </div>
                     <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Companionship & House Visualizer</h1>
                     <p class="mt-2 text-indigo-200 text-sm md:text-base max-w-xl">
-                        Upload your house datasets, boundary GeoJSON, and companionship coverage rules to explore spatial relationships interactively.
+                        Upload Excel rosters (.xlsx), CSV, JSON house datasets, boundaries GeoJSON, and companionship rules to explore spatial relationships interactively.
                     </p>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-3">
@@ -81,12 +83,12 @@
                         <i class="fa-solid fa-house"></i>
                     </div>
                     <h2 class="font-bold text-slate-900 text-lg">1. House List File</h2>
-                    <p class="text-xs text-slate-500 mt-1">JSON or CSV containing address, capacity, residents, cost, beds, baths, and lat/lng.</p>
+                    <p class="text-xs text-slate-500 mt-1">Excel (.xlsx), CSV, or JSON containing address, capacity, residents, cost, lat/lng, or roster info.</p>
                     
                     <div class="mt-4">
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload or Paste JSON</label>
-                        <input type="file" id="house-file-input" accept=".json,.csv" onchange="handleFileUpload(event, 'houses')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-3">
-                        <textarea id="house-json-input" rows="5" placeholder="Paste JSON data here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload Excel / CSV / JSON</label>
+                        <input type="file" id="house-file-input" accept=".json,.csv,.xlsx,.xls" onchange="handleFileUpload(event, 'houses')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-3">
+                        <textarea id="house-json-input" rows="5" placeholder="Paste or parsed JSON data here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
@@ -102,7 +104,7 @@
                         <i class="fa-solid fa-draw-polygon"></i>
                     </div>
                     <h2 class="font-bold text-slate-900 text-lg">2. Boundaries GeoJSON</h2>
-                    <p class="text-xs text-slate-500 mt-1">GeoJSON polygon file for regions (e.g., Fresno & Clovis areas).</p>
+                    <p class="text-xs text-slate-500 mt-1">GeoJSON polygon file for regions (e.g., Fresno, Clovis, Visalia, Reedley areas).</p>
                     
                     <div class="mt-4">
                         <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload or Paste GeoJSON</label>
@@ -123,11 +125,11 @@
                         <i class="fa-solid fa-users-rectangle"></i>
                     </div>
                     <h2 class="font-bold text-slate-900 text-lg">3. Companionship Mapping</h2>
-                    <p class="text-xs text-slate-500 mt-1">JSON configuration mapping which companionships cover which boundaries.</p>
+                    <p class="text-xs text-slate-500 mt-1">Excel roster or JSON configuration mapping companionships to coverage areas.</p>
                     
                     <div class="mt-4">
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload or Paste JSON</label>
-                        <input type="file" id="mapping-file-input" accept=".json" onchange="handleFileUpload(event, 'mapping')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer mb-3">
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload Excel / CSV / JSON</label>
+                        <input type="file" id="mapping-file-input" accept=".json,.csv,.xlsx,.xls" onchange="handleFileUpload(event, 'mapping')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer mb-3">
                         <textarea id="mapping-json-input" rows="5" placeholder="Paste mapping JSON here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
                     </div>
                 </div>
@@ -143,7 +145,7 @@
         <footer class="bg-white border-t border-slate-200 py-6 px-6 text-center">
             <div class="max-w-5xl mx-auto flex items-center justify-between">
                 <div class="text-xs text-slate-500">
-                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Quick Start will automatically populate Mock Data for Fresno, Clovis, and Companionships A, B, C.
+                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Supports Excel (.xlsx), CSV, and JSON data with resilient automatic parsing.
                 </div>
                 <button onclick="launchMap()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition flex items-center space-x-3 text-base">
                     <span>Launch Map Visualizer</span>
@@ -176,7 +178,7 @@
                 <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                     <i class="fa-solid fa-magnifying-glass text-sm"></i>
                 </div>
-                <input type="text" id="search-input" oninput="handleSearch(this.value)" placeholder="Search houses, address, companionship (e.g., A), or area..." class="w-full pl-10 pr-4 py-2 bg-slate-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:outline-none transition">
+                <input type="text" id="search-input" oninput="handleSearch(this.value)" placeholder="Search houses, address, area, or zone..." class="w-full pl-10 pr-4 py-2 bg-slate-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:outline-none transition">
                 <div id="search-results-dropdown" class="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto hidden z-50"></div>
             </div>
 
@@ -241,19 +243,34 @@
         let map = null;
         let houseMarkersLayer = null;
         let boundaryLayersGroup = null;
-        let currentSelectedLayer = null;
         let houseLayerMap = {}; // Maps house id to Leaflet Marker
         let boundaryLayerMap = {}; // Maps boundary name to Leaflet Polygon
+
+        // Zone Center Coordinates Fallback Map
+        const zoneCoordinates = {
+            'fresno': [36.7468, -119.7726],
+            'fresno east': [36.7550, -119.7000],
+            'fresno north': [36.8400, -119.7800],
+            'fresno west': [36.7600, -119.8300],
+            'hanford': [36.3275, -119.6457],
+            'madera': [36.9613, -120.0607],
+            'merced': [37.3022, -120.4830],
+            'porterville': [36.0652, -119.0168],
+            'reedley': [36.5963, -119.4504],
+            'visalia': [36.3302, -119.2921],
+            'clovis': [36.8252, -119.7029]
+        };
 
         // Mock Data definitions
         const mockHouses = [
             {
                 id: "house-1",
                 address: "742 E Olive Ave (Tower District), Fresno, CA",
+                zone: "Fresno",
                 lat: 36.7410,
                 lng: -119.8000,
                 capacity: 4,
-                companionships: ["Companionship A"],
+                companionships: ["Tower District Area 1"],
                 cost: 1500,
                 bedrooms: 2,
                 bathrooms: 2
@@ -261,10 +278,11 @@
             {
                 id: "house-2",
                 address: "1250 E Shepherd Ave (Northern Clovis), Clovis, CA",
+                zone: "Clovis",
                 lat: 36.8535,
                 lng: -119.7020,
                 capacity: 4,
-                companionships: ["Companionship B"],
+                companionships: ["Northern Clovis Area 2"],
                 cost: 1500,
                 bedrooms: 2,
                 bathrooms: 2
@@ -316,9 +334,8 @@
         };
 
         const mockMapping = {
-            "Companionship A": ["Tower District (Fresno)"],
-            "Companionship B": ["Northern Clovis"],
-            "Companionship C": ["Tower District (Fresno)", "Northern Clovis"]
+            "Tower District Area 1": ["Tower District (Fresno)"],
+            "Northern Clovis Area 2": ["Northern Clovis"]
         };
 
         // Load Quick-Start Mock Data
@@ -355,28 +372,200 @@
             URL.revokeObjectURL(url);
         }
 
-        // Handle File Uploads
+        // Universal File Upload Handler with Excel, CSV & JSON parsing
         function handleFileUpload(event, type) {
             const file = event.target.files[0];
             if (!file) return;
 
+            const filename = file.name.toLowerCase();
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const content = e.target.result;
-                if (type === 'houses') {
-                    document.getElementById('house-json-input').value = content;
-                } else if (type === 'boundaries') {
-                    document.getElementById('boundary-json-input').value = content;
-                } else if (type === 'mapping') {
-                    document.getElementById('mapping-json-input').value = content;
+
+            if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        processExcelWorkbook(workbook, type, file.name);
+                    } catch (err) {
+                        showToast(`Error reading Excel file: ${err.message}`, "error");
+                        console.error(err);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (filename.endsWith('.csv')) {
+                reader.onload = function(e) {
+                    try {
+                        const text = e.target.result;
+                        const workbook = XLSX.read(text, { type: 'string' });
+                        processExcelWorkbook(workbook, type, file.name);
+                    } catch (err) {
+                        showToast(`Error reading CSV file: ${err.message}`, "error");
+                        console.error(err);
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                // Default JSON / GeoJSON reading
+                reader.onload = function(e) {
+                    try {
+                        const content = e.target.result;
+                        if (type === 'houses') {
+                            document.getElementById('house-json-input').value = content;
+                        } else if (type === 'boundaries') {
+                            document.getElementById('boundary-json-input').value = content;
+                        } else if (type === 'mapping') {
+                            document.getElementById('mapping-json-input').value = content;
+                        }
+                        updateStatusIndicators();
+                        showToast(`Loaded ${file.name}`, "success");
+                    } catch (err) {
+                        showToast(`Error parsing file: ${err.message}`, "error");
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // Process Excel Spreadsheet Data Safely
+        function processExcelWorkbook(workbook, uploadType, filename) {
+            try {
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                if (!rawRows || rawRows.length === 0) {
+                    showToast(`The uploaded sheet "${sheetName}" contains no data.`, "info");
+                    return;
                 }
-                showToast(`Loaded ${file.name}`, "success");
+
+                // Parse Roster / Spreadsheet Data
+                const { houses, mappings, warnings } = parseRosterSpreadsheet(rawRows);
+
+                if (houses.length > 0) {
+                    document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
+                    appData.houses = houses;
+                }
+                if (Object.keys(mappings).length > 0) {
+                    document.getElementById('mapping-json-input').value = JSON.stringify(mappings, null, 2);
+                    appData.mapping = mappings;
+                }
+
+                updateStatusIndicators();
+
+                let msg = `Loaded "${filename}": ${houses.length} houses, ${Object.keys(mappings).length} area mappings extracted.`;
+                if (warnings.length > 0) {
+                    msg += ` (${warnings.length} minor row warning(s) handled safely)`;
+                }
+                showToast(msg, "success");
+
+            } catch (err) {
+                console.error("Spreadsheet Parsing Error:", err);
+                showToast(`Unable to parse Excel file: ${err.message}`, "error");
+            }
+        }
+
+        // Flexible Column Recognition for Rosters (like DefaultTeachingAreas.xlsx)
+        function parseRosterSpreadsheet(rows) {
+            const housesMap = {};
+            const mappingsMap = {};
+            const warnings = [];
+
+            // Safe column lookup helper
+            function getRowVal(row, candidates) {
+                const rowKeys = Object.keys(row);
+                for (let cand of candidates) {
+                    const matchKey = rowKeys.find(k => String(k).trim().toLowerCase().includes(cand.toLowerCase()));
+                    if (matchKey && row[matchKey] !== undefined && row[matchKey] !== null) {
+                        const val = String(row[matchKey]).trim();
+                        if (val !== "") return val;
+                    }
+                }
+                return "";
+            }
+
+            rows.forEach((row, idx) => {
+                try {
+                    const zone = getRowVal(row, ['zone']);
+                    const district = getRowVal(row, ['district']);
+                    const area = getRowVal(row, ['area']);
+                    const car = getRowVal(row, ['car']);
+                    const missionaries = getRowVal(row, ['missionaries', 'missionary', 'residents']);
+                    const phone = getRowVal(row, ['phone', 'mobile', 'contact']);
+                    const houseName = getRowVal(row, ['house name', 'house', 'residence', 'address']);
+                    const units = getRowVal(row, ['ecclesiastical unit', 'ecclesiastical', 'unit', 'boundaries', 'regions']);
+                    const latVal = parseFloat(getRowVal(row, ['lat', 'latitude']));
+                    const lngVal = parseFloat(getRowVal(row, ['lng', 'lon', 'longitude']));
+
+                    if (!area && !houseName) {
+                        warnings.push(`Row ${idx + 2}: Empty or unmapped row.`);
+                        return;
+                    }
+
+                    const compName = area || missionaries || `Area ${idx + 1}`;
+
+                    // Extract Companionship -> Area Mappings
+                    if (compName && units) {
+                        const unitList = units.split(',').map(u => u.trim()).filter(u => u.length > 0);
+                        if (!mappingsMap[compName]) mappingsMap[compName] = [];
+                        unitList.forEach(u => {
+                            if (!mappingsMap[compName].includes(u)) {
+                                mappingsMap[compName].push(u);
+                            }
+                        });
+                    }
+
+                    // Extract & Group Houses
+                    if (houseName) {
+                        if (!housesMap[houseName]) {
+                            // Calculate or lookup lat/lng
+                            let lat = !isNaN(latVal) ? latVal : null;
+                            let lng = !isNaN(lngVal) ? lngVal : null;
+
+                            if (lat === null || lng === null) {
+                                const zoneKey = (zone || '').toLowerCase().trim();
+                                const baseCoords = zoneCoordinates[zoneKey] || [36.7800, -119.7500];
+                                const offsetCount = Object.keys(housesMap).length;
+                                // Create slight geometric offsets for houses in the same zone so markers scatter nicely
+                                lat = baseCoords[0] + ((offsetCount % 7) - 3) * 0.008;
+                                lng = baseCoords[1] + (Math.floor(offsetCount / 7) % 7 - 3) * 0.008;
+                            }
+
+                            housesMap[houseName] = {
+                                id: `house-${Object.keys(housesMap).length + 1}`,
+                                address: houseName,
+                                zone: zone || 'Unassigned Zone',
+                                district: district || '',
+                                lat: lat,
+                                lng: lng,
+                                capacity: 2,
+                                companionships: [],
+                                phones: [],
+                                car: car,
+                                missionaries: missionaries
+                            };
+                        }
+
+                        if (compName && !housesMap[houseName].companionships.includes(compName)) {
+                            housesMap[houseName].companionships.push(compName);
+                        }
+                        if (phone && !housesMap[houseName].phones.includes(phone)) {
+                            housesMap[houseName].phones.push(phone);
+                        }
+                    }
+
+                } catch (rowErr) {
+                    warnings.push(`Row ${idx + 2}: ${rowErr.message}`);
+                }
+            });
+
+            return {
+                houses: Object.values(housesMap),
+                mappings: mappingsMap,
+                warnings: warnings
             };
-            reader.readAsText(file);
         }
 
         function updateStatusIndicators() {
-            // Check house data
             const houseVal = document.getElementById('house-json-input').value.trim();
             if (houseVal) {
                 document.getElementById('house-status').innerText = "Status: Loaded";
@@ -403,6 +592,8 @@
             toastMsg.innerText = message;
             if (type === "success") {
                 toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+            } else if (type === "error") {
+                toastIcon.className = "fa-solid fa-triangle-exclamation text-rose-400";
             } else {
                 toastIcon.className = "fa-solid fa-circle-info text-sky-400";
             }
@@ -410,36 +601,32 @@
             toast.classList.remove('translate-y-[-200%]');
             setTimeout(() => {
                 toast.classList.add('translate-y-[-200%]');
-            }, 3500);
+            }, 4000);
         }
 
         // Launch Map Transition
         function launchMap() {
-            // Parse textareas
             try {
                 const houseText = document.getElementById('house-json-input').value.trim();
                 const boundText = document.getElementById('boundary-json-input').value.trim();
                 const mapText = document.getElementById('mapping-json-input').value.trim();
 
-                if (!houseText || !boundText || !mapText) {
-                    // Auto load mock data if empty
+                if (!houseText && !boundText && !mapText) {
                     loadMockData();
                 } else {
-                    appData.houses = JSON.parse(houseText);
-                    appData.boundaries = JSON.parse(boundText);
-                    appData.mapping = JSON.parse(mapText);
+                    appData.houses = houseText ? JSON.parse(houseText) : [];
+                    appData.boundaries = boundText ? JSON.parse(boundText) : { type: "FeatureCollection", features: [] };
+                    appData.mapping = mapText ? JSON.parse(mapText) : {};
                 }
             } catch (err) {
-                showToast("Error parsing JSON data. Please check syntax.", "info");
+                showToast("Error parsing input data. Please verify file content.", "error");
                 console.error(err);
                 return;
             }
 
-            // Switch views
             document.getElementById('home-view').classList.add('hidden');
             document.getElementById('map-view').classList.remove('hidden');
 
-            // Initialize Leaflet Map if not already initialized
             setTimeout(() => {
                 initLeafletMap();
             }, 100);
@@ -452,22 +639,26 @@
 
         // Initialize Map
         function initLeafletMap() {
-            if (!map) {
-                map = L.map('leaflet-map').setView([36.7800, -119.7500], 11);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19,
-                    attribution: '&copy; OpenStreetMap contributors'
-                }).addTo(map);
-            } else {
-                map.invalidateSize();
-            }
+            try {
+                if (!map) {
+                    map = L.map('leaflet-map').setView([36.7800, -119.7500], 10);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '&copy; OpenStreetMap contributors'
+                    }).addTo(map);
+                } else {
+                    map.invalidateSize();
+                }
 
-            renderMapLayers();
+                renderMapLayers();
+            } catch (err) {
+                console.error("Map initialization error:", err);
+                showToast("Notice: Map loaded with default settings.", "info");
+            }
         }
 
-        // Render Boundaries and Houses on Map
+        // Render Boundaries and Houses safely on Map
         function renderMapLayers() {
-            // Clear existing layers
             if (boundaryLayersGroup) map.removeLayer(boundaryLayersGroup);
             if (houseMarkersLayer) map.removeLayer(houseMarkersLayer);
 
@@ -478,7 +669,7 @@
             houseMarkersLayer = L.layerGroup();
 
             // 1. Render Boundaries GeoJSON
-            if (appData.boundaries && appData.boundaries.features) {
+            if (appData.boundaries && Array.isArray(appData.boundaries.features)) {
                 L.geoJSON(appData.boundaries, {
                     style: function(feature) {
                         return {
@@ -489,7 +680,7 @@
                         };
                     },
                     onEachFeature: function(feature, layer) {
-                        const name = feature.properties.name || "Unnamed Area";
+                        const name = (feature.properties && feature.properties.name) || "Unnamed Area";
                         boundaryLayerMap[name] = layer;
 
                         layer.on('click', function(e) {
@@ -505,23 +696,27 @@
             // 2. Render Houses with custom Emoji icon
             if (appData.houses && Array.isArray(appData.houses)) {
                 appData.houses.forEach(house => {
-                    const houseIcon = L.divIcon({
-                        className: 'custom-house-marker',
-                        html: `<div style="background: white; border: 2px solid #4f46e5; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-size: 18px; cursor: pointer;">🏠</div>`,
-                        iconSize: [36, 36],
-                        iconAnchor: [18, 18]
-                    });
+                    if (house && !isNaN(house.lat) && !isNaN(house.lng)) {
+                        const houseIcon = L.divIcon({
+                            className: 'custom-house-marker',
+                            html: `<div style="background: white; border: 2px solid #4f46e5; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-size: 18px; cursor: pointer;">🏠</div>`,
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 18]
+                        });
 
-                    const marker = L.marker([house.lat, house.lng], { icon: houseIcon });
-                    houseLayerMap[house.id] = marker;
+                        const marker = L.marker([house.lat, house.lng], { icon: houseIcon });
+                        houseLayerMap[house.id] = marker;
 
-                    marker.on('click', function(e) {
-                        L.DomEvent.stopPropagation(e);
-                        highlightHouse(house.id);
-                    });
+                        marker.on('click', function(e) {
+                            L.DomEvent.stopPropagation(e);
+                            highlightHouse(house.id);
+                        });
 
-                    marker.bindTooltip(`<strong>${house.address}</strong><br><span class="text-xs">Capacity: ${house.capacity}</span>`);
-                    houseMarkersLayer.addLayer(marker);
+                        const houseTitle = house.address || 'House Location';
+                        const zoneLabel = house.zone ? `Zone: ${house.zone}` : '';
+                        marker.bindTooltip(`<strong>${houseTitle}</strong><br><span class="text-xs">${zoneLabel}</span>`);
+                        houseMarkersLayer.addLayer(marker);
+                    }
                 });
             }
 
@@ -532,7 +727,6 @@
             document.getElementById('stat-house-count').innerText = appData.houses ? appData.houses.length : 0;
             document.getElementById('stat-boundary-count').innerText = appData.boundaries && appData.boundaries.features ? appData.boundaries.features.length : 0;
             
-            // Count unique companionships
             let comps = new Set();
             if (appData.mapping) {
                 Object.keys(appData.mapping).forEach(c => comps.add(c));
@@ -555,14 +749,15 @@
 
             // Highlight Marker
             const marker = houseLayerMap[houseId];
-            if (marker) {
-                map.setView([house.lat, house.lng], 14, { animate: true });
+            if (marker && house.lat && house.lng) {
+                map.setView([house.lat, house.lng], 13, { animate: true });
             }
 
-            // Find boundaries covered by companionships living in this house
+            // Find boundaries covered
             let coveredBoundaries = new Set();
-            if (house.companionships) {
+            if (house.companionships && appData.mapping) {
                 house.companionships.forEach(comp => {
+                    // Direct match or partial key lookup
                     const assignedAreas = appData.mapping[comp] || [];
                     assignedAreas.forEach(area => coveredBoundaries.add(area));
                 });
@@ -589,12 +784,16 @@
 
             panelIcon.className = "w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-base";
             panelIcon.innerHTML = `<i class="fa-solid fa-house"></i>`;
-            panelTitle.innerText = house.address;
-            panelSubtitle.innerText = "House Details & Coverage";
+            panelTitle.innerText = house.address || 'House Details';
+            panelSubtitle.innerText = house.zone ? `Zone: ${house.zone}` : "House Details & Coverage";
 
             let compsHtml = house.companionships && house.companionships.length > 0 
                 ? house.companionships.map(c => `<span class="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1">${c}</span>`).join('')
                 : '<span class="text-slate-400 italic">None assigned</span>';
+
+            let phonesHtml = house.phones && house.phones.length > 0
+                ? house.phones.join(', ')
+                : 'N/A';
 
             let boundsHtml = coveredBoundaries.size > 0
                 ? Array.from(coveredBoundaries).map(b => `<span class="bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-draw-polygon mr-1"></i>${b}</span>`).join('')
@@ -604,30 +803,30 @@
                 <div class="space-y-4">
                     <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
                         <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
-                            <span>Monthly Rent</span>
-                            <strong class="text-slate-900 text-sm">$${house.cost || 'N/A'}</strong>
+                            <span>Zone / District</span>
+                            <strong class="text-slate-900 text-sm">${house.zone || 'N/A'} ${house.district ? ' (' + house.district + ')' : ''}</strong>
                         </div>
                         <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
-                            <span>Capacity</span>
-                            <strong class="text-slate-900 text-sm">${house.capacity || 'N/A'} residents</strong>
+                            <span>Phone Contact</span>
+                            <strong class="text-slate-900 text-xs font-mono">${phonesHtml}</strong>
                         </div>
                         <div class="flex justify-between items-center text-xs text-slate-500 border-b border-slate-200/60 pb-2">
-                            <span>Bedrooms / Bathrooms</span>
-                            <strong class="text-slate-900 text-sm">${house.bedrooms || '-'} Beds / ${house.bathrooms || '-'} Baths</strong>
+                            <span>Vehicle / Car</span>
+                            <strong class="text-slate-900 text-sm">${house.car || 'N/A'}</strong>
                         </div>
                         <div class="flex justify-between items-center text-xs text-slate-500">
-                            <span>GPS Coordinates</span>
-                            <strong class="text-slate-700 font-mono text-xs">${house.lat.toFixed(4)}, ${house.lng.toFixed(4)}</strong>
+                            <span>GPS Location</span>
+                            <strong class="text-slate-700 font-mono text-xs">${house.lat ? house.lat.toFixed(4) : '-'}, ${house.lng ? house.lng.toFixed(4) : '-'}</strong>
                         </div>
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships Living Here</h4>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships / Areas Living Here</h4>
                         <div>${compsHtml}</div>
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Covered Boundaries (Highlighted)</h4>
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Covered Units / Areas</h4>
                         <div>${boundsHtml}</div>
                     </div>
                 </div>
@@ -648,18 +847,16 @@
                 map.fitBounds(bLayer.getBounds(), { padding: [50, 50], animate: true });
             }
 
-            // Find which companionships cover this boundary
             let coveringComps = [];
             if (appData.mapping) {
                 Object.keys(appData.mapping).forEach(comp => {
                     const areas = appData.mapping[comp];
-                    if (areas && areas.includes(areaName)) {
+                    if (areas && (areas.includes(areaName) || areas.some(a => a.toLowerCase().includes(areaName.toLowerCase())))) {
                         coveringComps.push(comp);
                     }
                 });
             }
 
-            // Find which houses these companionships live in
             let residentHouses = [];
             if (appData.houses) {
                 appData.houses.forEach(house => {
@@ -672,7 +869,6 @@
                 });
             }
 
-            // Populate Info Panel for Area
             const panelTitle = document.getElementById('panel-title');
             const panelSubtitle = document.getElementById('panel-subtitle');
             const panelIcon = document.getElementById('panel-icon');
@@ -694,12 +890,12 @@
                             <i class="fa-solid fa-house text-indigo-600 mr-2"></i> ${h.address}
                         </div>
                         <div class="text-xs text-slate-500 mt-1 flex justify-between">
-                            <span>Residents: ${h.companionships.join(', ')}</span>
+                            <span>Area: ${h.companionships ? h.companionships.join(', ') : 'N/A'}</span>
                             <span class="font-medium text-indigo-600">Inspect &rarr;</span>
                         </div>
                     </div>
                 `).join('')
-                : '<span class="text-slate-400 italic">No houses registered in this region</span>';
+                : '<span class="text-slate-400 italic">No registered houses assigned to this region</span>';
 
             panelBody.innerHTML = `
                 <div class="space-y-4">
@@ -745,19 +941,26 @@
             const q = query.toLowerCase();
             let results = [];
 
-            // Search houses
             if (appData.houses) {
                 appData.houses.forEach(h => {
-                    if (h.address.toLowerCase().includes(q) || (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))) {
-                        results.push({ type: 'house', title: h.address, subtitle: `House • Residents: ${h.companionships.join(', ')}`, id: h.id });
+                    if (
+                        (h.address && h.address.toLowerCase().includes(q)) ||
+                        (h.zone && h.zone.toLowerCase().includes(q)) ||
+                        (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))
+                    ) {
+                        results.push({
+                            type: 'house',
+                            title: h.address || 'House',
+                            subtitle: `House • Zone: ${h.zone || 'N/A'} • ${h.companionships ? h.companionships.join(', ') : ''}`,
+                            id: h.id
+                        });
                     }
                 });
             }
 
-            // Search boundaries
             if (appData.boundaries && appData.boundaries.features) {
                 appData.boundaries.features.forEach(f => {
-                    const name = f.properties.name || "";
+                    const name = (f.properties && f.properties.name) || "";
                     if (name.toLowerCase().includes(q)) {
                         results.push({ type: 'boundary', title: name, subtitle: 'Area / Boundary', id: name });
                     }
@@ -770,7 +973,7 @@
                 return;
             }
 
-            dropdown.innerHTML = results.map(r => `
+            dropdown.innerHTML = results.slice(0, 10).map(r => `
                 <div onclick="selectSearchResult('${r.type}', '${r.id}')" class="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-none">
                     <div class="text-xs font-semibold text-slate-800 flex items-center">
                         <i class="fa-solid ${r.type === 'house' ? 'fa-house text-indigo-600' : 'fa-draw-polygon text-amber-600'} mr-2"></i>
