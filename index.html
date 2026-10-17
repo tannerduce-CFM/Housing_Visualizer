@@ -151,7 +151,7 @@
         <footer class="bg-white border-t border-slate-200 py-6 px-6 text-center">
             <div class="max-w-5xl mx-auto flex items-center justify-between">
                 <div class="text-xs text-slate-500">
-                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Default base boundary set to `wards_base.geojson`. Click Launch to open map visualizer.
+                    <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> Default base boundary set to `wards_base.geojson`. Bracketed unit numbers automatically pair features.
                 </div>
                 <button onclick="launchMap()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition flex items-center space-x-3 text-base">
                     <span>Launch Map Visualizer</span>
@@ -252,20 +252,53 @@
         let houseLayerMap = {}; // Maps house id to Leaflet Marker
         let boundaryLayerMap = {}; // Maps boundary name to Leaflet Polygon
 
-        // Zone Center Coordinates Fallback Map
+        // Detailed City/Zone Coordinates Fallback Map
         const zoneCoordinates = {
-            'f': [36.7468, -119.7726],   // Fresno
-            'fe': [36.7550, -119.7000],  // Fresno East
-            'fn': [36.8400, -119.7800],  // Fresno North
-            'fw': [36.7600, -119.8300],  // Fresno West
-            'm': [37.0500, -120.0000],   // Merced / Chowchilla / Mariposa
-            'ma': [36.9613, -120.0607],  // Madera
-            'h': [36.3275, -119.6457],   // Hanford
-            'r': [36.5963, -119.4504],   // Reedley
-            'v': [36.3302, -119.2921],   // Visalia
-            'p': [36.0652, -119.0168],   // Porterville
-            'clovis': [36.8252, -119.7029]
+            'f': [36.7468, -119.7726],        // Fresno Center
+            'fe': [36.7550, -119.7000],       // Fresno East
+            'fn': [36.8400, -119.7800],       // Fresno North
+            'fw': [36.7600, -119.8300],       // Fresno West
+            'm': [37.3022, -120.4830],        // Merced
+            'ma': [36.9613, -120.0607],       // Madera
+            'h': [36.3275, -119.6457],        // Hanford
+            'r': [36.5963, -119.4504],        // Reedley
+            'v': [36.3302, -119.2921],        // Visalia
+            'p': [36.0652, -119.0168],        // Porterville
+            'clovis': [36.8252, -119.7029],   // Clovis
+            'chowchilla': [37.1230, -120.2602], // Chowchilla
+            'sanger': [36.7080, -119.5560],   // Sanger
+            'mariposa': [37.4850, -119.9660], // Mariposa
+            'los banos': [37.0583, -120.8500],// Los Banos
+            'corcoran': [36.0980, -119.5590], // Corcoran
+            'selma': [36.5708, -119.6120],    // Selma
+            'kerman': [36.7236, -120.0599],   // Kerman
+            'lemoore': [36.3008, -119.7829]   // Lemoore
         };
+
+        // Helper to extract bracketed unit numbers, e.g. "Echo (Spanish) (181528)" -> "181528"
+        function extractUnitNumber(str) {
+            if (!str) return null;
+            const match = String(str).match(/\((\d+)\)/);
+            return match ? match[1] : null;
+        }
+
+        // Robust matching helper comparing unit numbers first, then fallback to substring
+        function isUnitMatch(unitA, unitB) {
+            if (!unitA || !unitB) return false;
+
+            const numA = extractUnitNumber(unitA);
+            const numB = extractUnitNumber(unitB);
+
+            // If both strings have a bracketed number, match on the number!
+            if (numA && numB) {
+                return numA === numB;
+            }
+
+            // Fallback: substring matching ignoring case
+            const aLower = String(unitA).toLowerCase();
+            const bLower = String(unitB).toLowerCase();
+            return aLower.includes(bLower) || bLower.includes(aLower);
+        }
 
         // Mock Data definitions
         const mockHouses = [
@@ -301,7 +334,7 @@
                 {
                     "type": "Feature",
                     "properties": {
-                        "name": "Echo Ward 1.1"
+                        "name": "Echo Ward (181528)"
                     },
                     "geometry": {
                         "type": "Polygon",
@@ -319,7 +352,7 @@
                 {
                     "type": "Feature",
                     "properties": {
-                        "name": "Sierra Vista 1.1"
+                        "name": "Sierra Vista Ward (21504)"
                     },
                     "geometry": {
                         "type": "Polygon",
@@ -374,7 +407,6 @@
             }
         }
 
-        // Load Quick-Start Mock Data
         function loadMockData() {
             appData.houses = mockHouses;
             appData.boundaries = mockBoundaries;
@@ -388,7 +420,6 @@
             showToast("Mock data successfully loaded!", "success");
         }
 
-        // Download Template Files
         function downloadMockFiles() {
             downloadJSON(mockHouses, "houses_template.json");
             setTimeout(() => downloadJSON(mockBoundaries, "boundaries_template.geojson"), 300);
@@ -408,7 +439,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // Universal File Upload Handler with Excel, CSV & JSON parsing
         function handleFileUpload(event, type) {
             const file = event.target.files[0];
             if (!file) return;
@@ -511,6 +541,7 @@
                 if (houses.length > 0) {
                     document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
                     appData.houses = houses;
+                    geocodeHouseAddresses(houses);
                 }
                 if (Object.keys(mappings).length > 0) {
                     document.getElementById('mapping-json-input').value = JSON.stringify(mappings, null, 2);
@@ -598,16 +629,18 @@
 
                             if (lat === null || lng === null) {
                                 const zoneKey = (zoneVal || '').toLowerCase().trim();
-                                const baseCoords = zoneCoordinates[zoneKey] || [36.7800, -119.7500];
+                                const cityKey = (cityState || '').toLowerCase().split(',')[0].trim();
+                                const baseCoords = zoneCoordinates[cityKey] || zoneCoordinates[zoneKey] || [36.7800, -119.7500];
                                 const offsetCount = Object.keys(housesMap).length;
-                                lat = baseCoords[0] + ((offsetCount % 7) - 3) * 0.008;
-                                lng = baseCoords[1] + (Math.floor(offsetCount / 7) % 7 - 3) * 0.008;
+                                lat = baseCoords[0] + ((offsetCount % 5) - 2) * 0.005;
+                                lng = baseCoords[1] + (Math.floor(offsetCount / 5) % 5 - 2) * 0.005;
                             }
 
                             housesMap[houseKey] = {
                                 id: `house-${Object.keys(housesMap).length + 1}`,
                                 name: houseName || fullAddress,
                                 address: fullAddress,
+                                streetQuery: `${streetAddress || houseName}, ${cityState || 'Fresno, CA'}`,
                                 zone: zoneVal || 'Unassigned',
                                 district: districtVal || '',
                                 status: status || 'Open',
@@ -619,7 +652,8 @@
                                 lng: lng,
                                 companionships: [],
                                 phones: [],
-                                car: carVal
+                                car: carVal,
+                                isGeocoded: !isNaN(latVal) && !isNaN(lngVal)
                             };
                         }
 
@@ -640,6 +674,44 @@
                 mappings: mappingsMap,
                 warnings: warnings
             };
+        }
+
+        async function geocodeHouseAddresses(houses) {
+            let geocodedCount = 0;
+            for (let house of houses) {
+                if (house.isGeocoded || !house.streetQuery) continue;
+
+                let cleanQuery = house.streetQuery
+                    .replace(/#[^\s,]+/g, '')
+                    .replace(/\d+nd floor.*/gi, '')
+                    .replace(/\r?\n|\r/g, ' ')
+                    .trim();
+
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanQuery)}`);
+                    const results = await response.json();
+
+                    if (results && results.length > 0) {
+                        house.lat = parseFloat(results[0].lat);
+                        house.lng = parseFloat(results[0].lon);
+                        house.isGeocoded = true;
+                        geocodedCount++;
+
+                        if (map && houseLayerMap[house.id]) {
+                            houseLayerMap[house.id].setLatLng([house.lat, house.lng]);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`Geocoding skipped for ${house.address}:`, err);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 1100));
+            }
+
+            if (geocodedCount > 0) {
+                document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
+                showToast(`Geocoded exact GPS location for ${geocodedCount} house address(es)!`, "success");
+            }
         }
 
         function updateStatusIndicators() {
@@ -680,7 +752,6 @@
             }, 4000);
         }
 
-        // Launch Map Transition
         async function launchMap() {
             try {
                 const houseText = document.getElementById('house-json-input').value.trim();
@@ -731,7 +802,6 @@
             }
         }
 
-        // Extract feature boundary name safely across common property keys
         function getFeatureName(feature) {
             if (!feature || !feature.properties) return "Unnamed Area";
             const p = feature.properties;
@@ -748,7 +818,6 @@
             boundaryLayersGroup = L.layerGroup();
             houseMarkersLayer = L.layerGroup();
 
-            // Render Ward Base Boundaries
             if (appData.boundaries && Array.isArray(appData.boundaries.features)) {
                 L.geoJSON(appData.boundaries, {
                     style: function(feature) {
@@ -772,14 +841,12 @@
                     }
                 }).addTo(boundaryLayersGroup);
 
-                // Auto fit map bounds if boundaries are present
                 try {
                     const tempGeoLayer = L.geoJSON(appData.boundaries);
                     map.fitBounds(tempGeoLayer.getBounds(), { padding: [30, 30] });
                 } catch (e) {}
             }
 
-            // Render Houses
             if (appData.houses && Array.isArray(appData.houses)) {
                 appData.houses.forEach(house => {
                     if (house && !isNaN(house.lat) && !isNaN(house.lng)) {
@@ -836,12 +903,10 @@
                 });
             }
 
-            // Highlight boundary layers matching unit names
+            // Match boundary layers using Bracketed Unit Numbers or Substring Match
             Object.keys(boundaryLayerMap).forEach(bName => {
                 const bLayer = boundaryLayerMap[bName];
-                let isMatch = Array.from(coveredBoundaries).some(cBound => 
-                    bName.toLowerCase().includes(cBound.toLowerCase()) || cBound.toLowerCase().includes(bName.toLowerCase())
-                );
+                let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound));
                 if (isMatch && bLayer) {
                     bLayer.setStyle({
                         color: '#10b981',
@@ -918,25 +983,37 @@
                 map.fitBounds(bLayer.getBounds(), { padding: [50, 50], animate: true });
             }
 
-            let coveringComps = [];
+            let coveringComps = new Set();
+
+            // 1. Check explicit mappings in mapping.json
             if (appData.mapping) {
                 Object.keys(appData.mapping).forEach(comp => {
                     const areas = appData.mapping[comp];
-                    if (areas && (areas.includes(areaName) || areas.some(a => a.toLowerCase().includes(areaName.toLowerCase()) || areaName.toLowerCase().includes(a.toLowerCase())))) {
-                        coveringComps.push(comp);
+                    if (areas && areas.some(a => isUnitMatch(areaName, a))) {
+                        coveringComps.add(comp);
                     }
                 });
             }
 
+            // 2. Direct Fallback Check across house companionships
             let residentHouses = [];
             if (appData.houses) {
                 appData.houses.forEach(house => {
                     if (house.companionships) {
-                        const matches = house.companionships.some(c => coveringComps.includes(c));
-                        if (matches) residentHouses.push(house);
+                        const hasDirectArea = house.companionships.some(comp => {
+                            const isMatch = isUnitMatch(areaName, comp) || Array.from(coveringComps).some(c => isUnitMatch(comp, c));
+                            if (isMatch) coveringComps.add(comp);
+                            return isMatch;
+                        });
+
+                        if (hasDirectArea) {
+                            residentHouses.push(house);
+                        }
                     }
                 });
             }
+
+            const compArray = Array.from(coveringComps);
 
             const panelTitle = document.getElementById('panel-title');
             const panelSubtitle = document.getElementById('panel-subtitle');
@@ -948,8 +1025,8 @@
             panelTitle.innerText = areaName;
             panelSubtitle.innerText = "Ward Boundary & Assigned Companionships";
 
-            let compsHtml = coveringComps.length > 0
-                ? coveringComps.map(c => `<span class="bg-amber-50 text-amber-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
+            let compsHtml = compArray.length > 0
+                ? compArray.map(c => `<span class="bg-amber-50 text-amber-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
                 : '<span class="text-slate-400 italic">No companionships assigned</span>';
 
             let housesHtml = residentHouses.length > 0
