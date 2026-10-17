@@ -45,6 +45,20 @@
         <span id="toast-message">Notification message here</span>
     </div>
 
+    <!-- Floating Geocoding Progress Bar Banner -->
+    <div id="geocoding-progress-container" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex flex-col space-y-2 border border-slate-700 w-11/12 max-w-lg">
+        <div class="flex items-center justify-between text-xs font-semibold">
+            <span class="flex items-center text-indigo-400">
+                <i class="fa-solid fa-spinner fa-spin mr-2"></i>
+                <span id="geocoding-progress-label">Geocoding House Addresses...</span>
+            </span>
+            <span id="geocoding-progress-text" class="text-slate-300 font-mono">0 / 0</span>
+        </div>
+        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700/50">
+            <div id="geocoding-progress-bar" class="bg-indigo-500 h-full w-0 transition-all duration-300"></div>
+        </div>
+    </div>
+
     <!-- ==================== HOMESCREEN VIEW ==================== -->
     <div id="home-view" class="flex-1 flex flex-col overflow-y-auto">
         <!-- Hero Header -->
@@ -289,15 +303,32 @@
             const numA = extractUnitNumber(unitA);
             const numB = extractUnitNumber(unitB);
 
-            // If both strings have a bracketed number, match on the number!
             if (numA && numB) {
                 return numA === numB;
             }
 
-            // Fallback: substring matching ignoring case
             const aLower = String(unitA).toLowerCase();
             const bLower = String(unitB).toLowerCase();
             return aLower.includes(bLower) || bLower.includes(aLower);
+        }
+
+        // Clean street address strings for maximum Nominatim OpenStreetMap match rate
+        function cleanStreetAddressForGeocoding(street, cityState) {
+            let s = String(street || '').trim();
+            let c = String(cityState || '').trim();
+
+            // Strip unit/apartment numbers (#129, Apt B, Suite 4, etc.)
+            s = s.replace(/#\s*\S+/gi, '')
+                 .replace(/\b(apt|apartment|suite|ste|unit)\b\s*\S+/gi, '')
+                 .replace(/\d+(st|nd|rd|th)?\s*floor.*/gi, '')
+                 .replace(/access from.*/gi, '')
+                 .replace(/\r?\n|\r/g, ' ')
+                 .trim();
+
+            // Append default state if missing
+            if (!c) c = 'California';
+
+            return `${s}, ${c}`;
         }
 
         // Mock Data definitions
@@ -640,7 +671,7 @@
                                 id: `house-${Object.keys(housesMap).length + 1}`,
                                 name: houseName || fullAddress,
                                 address: fullAddress,
-                                streetQuery: `${streetAddress || houseName}, ${cityState || 'Fresno, CA'}`,
+                                streetQuery: cleanStreetAddressForGeocoding(streetAddress || houseName, cityState),
                                 zone: zoneVal || 'Unassigned',
                                 district: districtVal || '',
                                 status: status || 'Open',
@@ -676,19 +707,31 @@
             };
         }
 
+        // Automatic Background Geocoding with real-time UI Progress Bar
         async function geocodeHouseAddresses(houses) {
-            let geocodedCount = 0;
-            for (let house of houses) {
-                if (house.isGeocoded || !house.streetQuery) continue;
+            const unmappedHouses = houses.filter(h => !h.isGeocoded && h.streetQuery);
+            if (unmappedHouses.length === 0) return;
 
-                let cleanQuery = house.streetQuery
-                    .replace(/#[^\s,]+/g, '')
-                    .replace(/\d+nd floor.*/gi, '')
-                    .replace(/\r?\n|\r/g, ' ')
-                    .trim();
+            const progressContainer = document.getElementById('geocoding-progress-container');
+            const progressText = document.getElementById('geocoding-progress-text');
+            const progressBar = document.getElementById('geocoding-progress-bar');
+            const progressLabel = document.getElementById('geocoding-progress-label');
+
+            progressContainer.classList.remove('hidden');
+
+            let completed = 0;
+            let geocodedCount = 0;
+            const total = unmappedHouses.length;
+
+            for (let house of unmappedHouses) {
+                completed++;
+                progressText.innerText = `${completed} / ${total}`;
+                const pct = Math.round((completed / total) * 100);
+                progressBar.style.width = `${pct}%`;
+                progressLabel.innerText = `Geocoding: ${house.name || 'House'}`;
 
                 try {
-                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanQuery)}`);
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(house.streetQuery)}`);
                     const results = await response.json();
 
                     if (results && results.length > 0) {
@@ -697,6 +740,7 @@
                         house.isGeocoded = true;
                         geocodedCount++;
 
+                        // Dynamically update marker on map if view is open
                         if (map && houseLayerMap[house.id]) {
                             houseLayerMap[house.id].setLatLng([house.lat, house.lng]);
                         }
@@ -705,13 +749,17 @@
                     console.warn(`Geocoding skipped for ${house.address}:`, err);
                 }
 
+                // Rate-limit delay (1.1s between calls)
                 await new Promise(resolve => setTimeout(resolve, 1100));
             }
 
-            if (geocodedCount > 0) {
-                document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
-                showToast(`Geocoded exact GPS location for ${geocodedCount} house address(es)!`, "success");
-            }
+            // Sync text area JSON with newly updated GPS coordinates
+            document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
+
+            setTimeout(() => {
+                progressContainer.classList.add('hidden');
+                showToast(`Finished geocoding! Placed ${geocodedCount} house(s) in exact locations.`, "success");
+            }, 800);
         }
 
         function updateStatusIndicators() {
@@ -903,7 +951,6 @@
                 });
             }
 
-            // Match boundary layers using Bracketed Unit Numbers or Substring Match
             Object.keys(boundaryLayerMap).forEach(bName => {
                 const bLayer = boundaryLayerMap[bName];
                 let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound));
@@ -985,7 +1032,6 @@
 
             let coveringComps = new Set();
 
-            // 1. Check explicit mappings in mapping.json
             if (appData.mapping) {
                 Object.keys(appData.mapping).forEach(comp => {
                     const areas = appData.mapping[comp];
@@ -995,7 +1041,6 @@
                 });
             }
 
-            // 2. Direct Fallback Check across house companionships
             let residentHouses = [];
             if (appData.houses) {
                 appData.houses.forEach(house => {
