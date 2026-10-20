@@ -54,27 +54,52 @@ window.addEventListener('DOMContentLoaded', async () => {
     fetchBaseBoundaryFile('wards_base.geojson');
 });
 
-// Helper to extract bracketed unit numbers, e.g. "Echo (Spanish) (181528)" -> "181528"
+// Helper to extract bracketed or standalone unit numbers, e.g., "Alluvial Ward (194212)" -> "194212"
 function extractUnitNumber(str) {
     if (!str) return null;
-    const match = String(str).match(/\((\d+)\)/);
+    const strVal = String(str).trim();
+    if (/^\d+$/.test(strVal)) return strVal; // If already a pure ID number
+    const match = strVal.match(/\((\d+)\)/);
     return match ? match[1] : null;
 }
 
-// Robust matching helper comparing unit numbers first, then fallback to substring
-function isUnitMatch(unitA, unitB) {
+// Extract unit ID from GeoJSON feature properties (supports "id", "ID", or bracketed text)
+function getFeatureUnitId(feature) {
+    if (!feature || !feature.properties) return null;
+    const p = feature.properties;
+    if (p.id !== undefined && p.id !== null) return String(p.id).trim();
+    if (p.ID !== undefined && p.ID !== null) return String(p.ID).trim();
+    return extractUnitNumber(p.name || p.Name || p.Ward || p.ward);
+}
+
+// Robust matching helper comparing unit IDs first, then fallback to name substring
+function isUnitMatch(unitA, unitB, featureA = null) {
     if (!unitA || !unitB) return false;
 
-    const numA = extractUnitNumber(unitA);
-    const numB = extractUnitNumber(unitB);
+    const idA = featureA ? getFeatureUnitId(featureA) : extractUnitNumber(unitA);
+    const idB = extractUnitNumber(unitB);
 
-    if (numA && numB) {
-        return numA === numB;
+    if (idA && idB) {
+        return idA === idB;
     }
 
     const aLower = String(unitA).toLowerCase();
     const bLower = String(unitB).toLowerCase();
     return aLower.includes(bLower) || bLower.includes(aLower);
+}
+
+// Extract full descriptive display title for a Ward
+function getFeatureDisplayName(feature) {
+    if (!feature || !feature.properties) return "Unnamed Area";
+    const p = feature.properties;
+    const name = p.name || p.Name || p.Ward || p.ward || p.unit || "Unnamed Area";
+    const unitId = getFeatureUnitId(feature);
+    
+    // If name doesn't already contain the unit number in brackets, append it nicely
+    if (unitId && !name.includes(`(${unitId})`)) {
+        return `${name} (#${unitId})`;
+    }
+    return name;
 }
 
 // Clean street address strings for maximum geocoding match rate
@@ -99,7 +124,6 @@ async function geocodeHouseAddresses(houses) {
     let cachedHitCount = 0;
     const unmappedHouses = [];
 
-    // 1. Check localAddressCache FIRST before making any network calls
     houses.forEach(house => {
         if (house.isGeocoded) return;
 
@@ -125,13 +149,11 @@ async function geocodeHouseAddresses(houses) {
         showToast(`Loaded ${cachedHitCount} house location(s) directly from addresses_cache.json!`, "success");
     }
 
-    // If all houses were in local cache, update textarea and return with ZERO API requests!
     if (unmappedHouses.length === 0) {
         document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
         return;
     }
 
-    // 2. Fallback to API Geocoding for unmapped addresses
     if (MAPBOX_ACCESS_TOKEN && MAPBOX_ACCESS_TOKEN !== "PASTE_YOUR_MAPBOX_TOKEN_HERE") {
         await geocodeHouseAddressesMapbox(unmappedHouses, houses);
     } else {
@@ -227,7 +249,7 @@ async function geocodeHouseAddressesNominatim(unmappedHouses, fullHouseList) {
                 localAddressCache[house.address] = { lat: house.lat, lng: house.lng };
 
                 if (map && houseLayerMap[house.id]) {
-                    houseLayerMap[house.id].setLatLng([house.lat, house.lng]);
+                    houseLayerMap[house.id].setLatLng([lat, lng]);
                 }
             }
         } catch (err) {
@@ -279,7 +301,9 @@ const mockBoundaries = {
         {
             "type": "Feature",
             "properties": {
-                "name": "Echo Ward (181528)"
+                "id": 181528,
+                "name": "Echo Ward",
+                "type": "UNIT"
             },
             "geometry": {
                 "type": "Polygon",
@@ -297,7 +321,9 @@ const mockBoundaries = {
         {
             "type": "Feature",
             "properties": {
-                "name": "Sierra Vista Ward (21504)"
+                "id": 21504,
+                "name": "Sierra Vista Ward",
+                "type": "UNIT"
             },
             "geometry": {
                 "type": "Polygon",
@@ -537,7 +563,6 @@ function parseRosterSpreadsheet(rows) {
                 return;
             }
 
-            // Always use the real street address if present, otherwise fall back to house name
             const actualStreet = streetAddress || houseName;
             let fullAddress = actualStreet;
             if (streetAddress && cityState) {
@@ -582,7 +607,6 @@ function parseRosterSpreadsheet(rows) {
                         id: `house-${Object.keys(housesMap).length + 1}`,
                         name: houseName || fullAddress,
                         address: fullAddress,
-                        // Fix: Force geocoding to query streetAddress + cityState rather than "Mission Office"
                         streetQuery: cleanStreetAddressForGeocoding(streetAddress, cityState),
                         zone: zoneVal || 'Unassigned',
                         district: districtVal || '',
@@ -707,12 +731,6 @@ function initLeafletMap() {
     }
 }
 
-function getFeatureName(feature) {
-    if (!feature || !feature.properties) return "Unnamed Area";
-    const p = feature.properties;
-    return p.name || p.Ward || p.ward || p.unit || p.Unit || p.EcclesiasticalUnit || p.TITLE || "Unnamed Area";
-}
-
 function renderMapLayers() {
     if (boundaryLayersGroup) map.removeLayer(boundaryLayersGroup);
     if (houseMarkersLayer) map.removeLayer(houseMarkersLayer);
@@ -734,15 +752,15 @@ function renderMapLayers() {
                 };
             },
             onEachFeature: function(feature, layer) {
-                const name = getFeatureName(feature);
-                boundaryLayerMap[name] = layer;
+                const displayName = getFeatureDisplayName(feature);
+                boundaryLayerMap[displayName] = { layer: layer, feature: feature };
 
                 layer.on('click', function(e) {
                     L.DomEvent.stopPropagation(e);
-                    highlightBoundary(name);
+                    highlightBoundary(displayName);
                 });
 
-                layer.bindTooltip(`<strong>${name}</strong><br><span class="text-xs">Click to inspect ward boundary</span>`, { sticky: true });
+                layer.bindTooltip(`<strong>${displayName}</strong><br><span class="text-xs">Click to inspect ward boundary</span>`, { sticky: true });
             }
         }).addTo(boundaryLayersGroup);
 
@@ -809,10 +827,10 @@ function highlightHouse(houseId) {
     }
 
     Object.keys(boundaryLayerMap).forEach(bName => {
-        const bLayer = boundaryLayerMap[bName];
-        let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound));
-        if (isMatch && bLayer) {
-            bLayer.setStyle({
+        const bObj = boundaryLayerMap[bName];
+        let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound, bObj.feature));
+        if (isMatch && bObj && bObj.layer) {
+            bObj.layer.setStyle({
                 color: '#10b981',
                 fillColor: '#34d399',
                 fillOpacity: 0.5,
@@ -873,18 +891,18 @@ function highlightHouse(houseId) {
     `;
 }
 
-function highlightBoundary(areaName) {
+function highlightBoundary(areaDisplayName) {
     resetMapHighlighting();
 
-    const bLayer = boundaryLayerMap[areaName];
-    if (bLayer) {
-        bLayer.setStyle({
+    const bObj = boundaryLayerMap[areaDisplayName];
+    if (bObj && bObj.layer) {
+        bObj.layer.setStyle({
             color: '#f59e0b',
             fillColor: '#fbbf24',
             fillOpacity: 0.5,
             weight: 3
         });
-        map.fitBounds(bLayer.getBounds(), { padding: [50, 50], animate: true });
+        map.fitBounds(bObj.layer.getBounds(), { padding: [50, 50], animate: true });
     }
 
     let coveringComps = new Set();
@@ -892,7 +910,7 @@ function highlightBoundary(areaName) {
     if (appData.mapping) {
         Object.keys(appData.mapping).forEach(comp => {
             const areas = appData.mapping[comp];
-            if (areas && areas.some(a => isUnitMatch(areaName, a))) {
+            if (areas && areas.some(a => isUnitMatch(areaDisplayName, a, bObj ? bObj.feature : null))) {
                 coveringComps.add(comp);
             }
         });
@@ -903,7 +921,7 @@ function highlightBoundary(areaName) {
         appData.houses.forEach(house => {
             if (house.companionships) {
                 const hasDirectArea = house.companionships.some(comp => {
-                    const isMatch = isUnitMatch(areaName, comp) || Array.from(coveringComps).some(c => isUnitMatch(comp, c));
+                    const isMatch = isUnitMatch(areaDisplayName, comp, bObj ? bObj.feature : null) || Array.from(coveringComps).some(c => isUnitMatch(comp, c));
                     if (isMatch) coveringComps.add(comp);
                     return isMatch;
                 });
@@ -924,7 +942,7 @@ function highlightBoundary(areaName) {
 
     panelIcon.className = "w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-base";
     panelIcon.innerHTML = `<i class="fa-solid fa-draw-polygon"></i>`;
-    panelTitle.innerText = areaName;
+    panelTitle.innerText = areaDisplayName;
     panelSubtitle.innerText = "Ward Boundary & Assigned Companionships";
 
     let compsHtml = compArray.length > 0
@@ -1006,7 +1024,7 @@ function handleSearch(query) {
 
     if (appData.boundaries && appData.boundaries.features) {
         appData.boundaries.features.forEach(f => {
-            const name = getFeatureName(f);
+            const name = getFeatureDisplayName(f);
             if (name.toLowerCase().includes(q)) {
                 results.push({ type: 'boundary', title: name, subtitle: 'Ward Boundary', id: name });
             }
