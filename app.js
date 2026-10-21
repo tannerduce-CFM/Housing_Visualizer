@@ -12,10 +12,22 @@ let appData = {
 
 let localAddressCache = {};
 let map = null;
+
+// Map Layer Groups
 let houseMarkersLayer = null;
-let boundaryLayersGroup = null;
-let houseLayerMap = {}; // Maps house id to Leaflet Marker
-let boundaryLayerMap = {}; // Maps boundary name to Leaflet Polygon
+let wardBoundariesGroup = null;
+let areaBoundariesGroup = null;
+
+// Feature Maps for Quick Inspection
+let houseLayerMap = {};
+let wardLayerMap = {};
+let areaLayerMap = {};
+
+// Track whichever boundary polygon feature the mouse is currently hovering over
+let hoveredBoundaryLayer = null;
+
+// Global Toast Timeout Tracker
+let toastTimeout = null;
 
 // Detailed City/Zone Coordinates Fallback Map
 const zoneCoordinates = {
@@ -40,7 +52,7 @@ const zoneCoordinates = {
     'lemoore': [36.3008, -119.7829]   // Lemoore
 };
 
-// On Page Load: Load local addresses_cache.json and default wards_base.geojson
+// On Page Load: Load local addresses_cache.json and default boundaries
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('addresses_cache.json');
@@ -51,19 +63,39 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
         console.warn('addresses_cache.json not found or empty. Falling back to API geocoding.');
     }
-    fetchBaseBoundaryFile('wards_base.geojson');
+    fetchBaseBoundaryFile('mission_wards_and_areas (1).geojson');
 });
 
-// Helper to extract bracketed or standalone unit numbers, e.g., "Alluvial Ward (194212)" -> "194212"
+// Setup Mouseover/Mouseout Tracking for 'L' key layer depth manipulation
+function setupHoverTracking(layer) {
+    layer.on('mouseover', function(e) {
+        hoveredBoundaryLayer = e.target;
+    });
+    layer.on('mouseout', function() {
+        hoveredBoundaryLayer = null;
+    });
+}
+
+// Global 'L' Key Press Listener: Sends hovered overlapping layer to back
+window.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 'l' && !['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase())) {
+        if (hoveredBoundaryLayer && typeof hoveredBoundaryLayer.bringToBack === 'function') {
+            hoveredBoundaryLayer.bringToBack();
+            showToast("Sent overlapping boundary layer to back (Lower layer revealed)", "info");
+        } else {
+            showToast("Hover your mouse over an overlapping boundary area and press 'L' to reveal layers underneath.", "info");
+        }
+    }
+});
+
 function extractUnitNumber(str) {
     if (!str) return null;
     const strVal = String(str).trim();
-    if (/^\d+$/.test(strVal)) return strVal; // If already a pure ID number
+    if (/^\d+$/.test(strVal)) return strVal;
     const match = strVal.match(/\((\d+)\)/);
     return match ? match[1] : null;
 }
 
-// Extract unit ID from GeoJSON feature properties (supports "id", "ID", or bracketed text)
 function getFeatureUnitId(feature) {
     if (!feature || !feature.properties) return null;
     const p = feature.properties;
@@ -72,7 +104,6 @@ function getFeatureUnitId(feature) {
     return extractUnitNumber(p.name || p.Name || p.Ward || p.ward);
 }
 
-// Robust matching helper comparing unit IDs first, then fallback to name substring
 function isUnitMatch(unitA, unitB, featureA = null) {
     if (!unitA || !unitB) return false;
 
@@ -88,21 +119,18 @@ function isUnitMatch(unitA, unitB, featureA = null) {
     return aLower.includes(bLower) || bLower.includes(aLower);
 }
 
-// Extract full descriptive display title for a Ward
 function getFeatureDisplayName(feature) {
     if (!feature || !feature.properties) return "Unnamed Area";
     const p = feature.properties;
     const name = p.name || p.Name || p.Ward || p.ward || p.unit || "Unnamed Area";
     const unitId = getFeatureUnitId(feature);
     
-    // If name doesn't already contain the unit number in brackets, append it nicely
     if (unitId && !name.includes(`(${unitId})`)) {
         return `${name} (#${unitId})`;
     }
     return name;
 }
 
-// Clean street address strings for maximum geocoding match rate
 function cleanStreetAddressForGeocoding(street, cityState) {
     let s = String(street || '').trim();
     let c = String(cityState || '').trim();
@@ -119,7 +147,6 @@ function cleanStreetAddressForGeocoding(street, cityState) {
     return `${s}, ${c}`;
 }
 
-// Smart Geocoding with Local Cache First
 async function geocodeHouseAddresses(houses) {
     let cachedHitCount = 0;
     const unmappedHouses = [];
@@ -267,6 +294,52 @@ async function geocodeHouseAddressesNominatim(unmappedHouses, fullHouseList) {
     }, 800);
 }
 
+// Checkbox Layer Toggle Controls
+function toggleBoundaryLayer(layerType, isChecked) {
+    if (!map) return;
+
+    if (layerType === 'ward') {
+        if (isChecked && wardBoundariesGroup) {
+            map.addLayer(wardBoundariesGroup);
+        } else if (wardBoundariesGroup) {
+            map.removeLayer(wardBoundariesGroup);
+        }
+    } else if (layerType === 'area') {
+        if (isChecked && areaBoundariesGroup) {
+            map.addLayer(areaBoundariesGroup);
+        } else if (areaBoundariesGroup) {
+            map.removeLayer(areaBoundariesGroup);
+        }
+    }
+}
+
+function handleBaseBoundarySelect(val) {
+    if (val === 'custom_upload') {
+        document.getElementById('boundary-json-input').value = '';
+        document.getElementById('boundary-status').innerText = "Status: Awaiting custom file upload";
+        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-slate-300";
+    } else {
+        fetchBaseBoundaryFile(val);
+    }
+}
+
+async function fetchBaseBoundaryFile(filename) {
+    try {
+        const response = await fetch(filename);
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const data = await response.json();
+        
+        appData.boundaries = data;
+        document.getElementById('boundary-json-input').value = JSON.stringify(data, null, 2);
+        document.getElementById('boundary-status').innerText = `Status: Loaded (${filename})`;
+        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-emerald-500";
+    } catch (err) {
+        console.warn(`Could not auto-load ${filename}. Waiting for manual upload.`, err);
+        document.getElementById('boundary-status').innerText = "Status: Upload boundary file or paste JSON";
+        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-slate-300";
+    }
+}
+
 // Mock Data definitions
 const mockHouses = [
     {
@@ -345,33 +418,6 @@ const mockMapping = {
     "Echo Ward 1.1": ["Echo (Spanish) (181528)"],
     "Sierra Vista 1.1": ["Sierra Vista (21504)"]
 };
-
-function handleBaseBoundarySelect(val) {
-    if (val === 'custom_upload') {
-        document.getElementById('boundary-json-input').value = '';
-        document.getElementById('boundary-status').innerText = "Status: Awaiting custom file upload";
-        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-slate-300";
-    } else {
-        fetchBaseBoundaryFile(val);
-    }
-}
-
-async function fetchBaseBoundaryFile(filename) {
-    try {
-        const response = await fetch(filename);
-        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-        const data = await response.json();
-        
-        appData.boundaries = data;
-        document.getElementById('boundary-json-input').value = JSON.stringify(data, null, 2);
-        document.getElementById('boundary-status').innerText = `Status: Loaded (${filename})`;
-        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-emerald-500";
-    } catch (err) {
-        console.warn(`Could not auto-load ${filename}. Waiting for manual upload.`, err);
-        document.getElementById('boundary-status').innerText = "Status: Upload boundary file or paste JSON";
-        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-slate-300";
-    }
-}
 
 function loadMockData() {
     appData.houses = mockHouses;
@@ -666,6 +712,12 @@ function showToast(message, type = "info") {
     const toastMsg = document.getElementById('toast-message');
     const toastIcon = document.getElementById('toast-icon');
 
+    if (!toast || !toastMsg || !toastIcon) return;
+
+    if (toastTimeout) {
+        clearTimeout(toastTimeout);
+    }
+
     toastMsg.innerText = message;
     if (type === "success") {
         toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
@@ -676,9 +728,10 @@ function showToast(message, type = "info") {
     }
 
     toast.classList.remove('translate-y-[-200%]');
-    setTimeout(() => {
+
+    toastTimeout = setTimeout(() => {
         toast.classList.add('translate-y-[-200%]');
-    }, 4000);
+    }, 2500);
 }
 
 async function launchMap() {
@@ -687,13 +740,9 @@ async function launchMap() {
         const boundText = document.getElementById('boundary-json-input').value.trim();
         const mapText = document.getElementById('mapping-json-input').value.trim();
 
-        if (!houseText && !boundText && !mapText) {
-            loadMockData();
-        } else {
-            appData.houses = houseText ? JSON.parse(houseText) : [];
-            appData.boundaries = boundText ? JSON.parse(boundText) : { type: "FeatureCollection", features: [] };
-            appData.mapping = mapText ? JSON.parse(mapText) : {};
-        }
+        appData.houses = houseText ? JSON.parse(houseText) : [];
+        appData.boundaries = boundText ? JSON.parse(boundText) : { type: "FeatureCollection", features: [] };
+        appData.mapping = mapText ? JSON.parse(mapText) : {};
     } catch (err) {
         showToast("Error parsing input data. Please verify file content.", "error");
         console.error(err);
@@ -731,38 +780,60 @@ function initLeafletMap() {
     }
 }
 
+// Render Wards (UNIT), Teaching Areas (AREA), and Houses
 function renderMapLayers() {
-    if (boundaryLayersGroup) map.removeLayer(boundaryLayersGroup);
+    if (wardBoundariesGroup) map.removeLayer(wardBoundariesGroup);
+    if (areaBoundariesGroup) map.removeLayer(areaBoundariesGroup);
     if (houseMarkersLayer) map.removeLayer(houseMarkersLayer);
 
-    boundaryLayerMap = {};
+    wardLayerMap = {};
+    areaLayerMap = {};
     houseLayerMap = {};
 
-    boundaryLayersGroup = L.layerGroup();
+    wardBoundariesGroup = L.layerGroup();
+    areaBoundariesGroup = L.layerGroup();
     houseMarkersLayer = L.layerGroup();
 
     if (appData.boundaries && Array.isArray(appData.boundaries.features)) {
-        L.geoJSON(appData.boundaries, {
-            style: function(feature) {
-                return {
-                    color: '#6366f1',
-                    weight: 2,
-                    fillColor: '#818cf8',
-                    fillOpacity: 0.25
-                };
-            },
-            onEachFeature: function(feature, layer) {
-                const displayName = getFeatureDisplayName(feature);
-                boundaryLayerMap[displayName] = { layer: layer, feature: feature };
+        appData.boundaries.features.forEach(feature => {
+            const displayName = getFeatureDisplayName(feature);
+            const pType = (feature.properties && (feature.properties.type || feature.properties.rawType) || '').toUpperCase();
 
-                layer.on('click', function(e) {
-                    L.DomEvent.stopPropagation(e);
-                    highlightBoundary(displayName);
-                });
+            const isWard = pType !== 'AREA';
+            const layerStyle = isWard ? {
+                color: '#6366f1',       // Indigo line for Wards
+                weight: 2,
+                fillColor: '#818cf8',
+                fillOpacity: 0.2
+            } : {
+                color: '#10b981',       // Emerald line for Teaching Areas
+                weight: 2.5,
+                dashArray: '5, 5',      // Dashed line to easily distinguish areas
+                fillColor: '#34d399',
+                fillOpacity: 0.25
+            };
 
-                layer.bindTooltip(`<strong>${displayName}</strong><br><span class="text-xs">Click to inspect ward boundary</span>`, { sticky: true });
+            const layer = L.geoJSON(feature, {
+                style: function() { return layerStyle; },
+                onEachFeature: function(feat, lyr) {
+                    setupHoverTracking(lyr);
+
+                    lyr.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        highlightBoundary(displayName);
+                    });
+                    lyr.bindTooltip(`<strong>${displayName}</strong><br><span class="text-xs">${isWard ? 'Ward Boundary' : 'Teaching Area'}</span>`, { sticky: true });
+                }
+            });
+
+            if (isWard) {
+                wardLayerMap[displayName] = { layer: layer, feature: feature };
+                wardBoundariesGroup.addLayer(layer);
+            } else {
+                areaLayerMap[displayName] = { layer: layer, feature: feature };
+                areaBoundariesGroup.addLayer(layer);
             }
-        }).addTo(boundaryLayersGroup);
+        });
 
         try {
             const tempGeoLayer = L.geoJSON(appData.boundaries);
@@ -770,6 +841,7 @@ function renderMapLayers() {
         } catch (e) {}
     }
 
+    // Render Houses
     if (appData.houses && Array.isArray(appData.houses)) {
         appData.houses.forEach(house => {
             if (house && !isNaN(house.lat) && !isNaN(house.lng)) {
@@ -795,7 +867,11 @@ function renderMapLayers() {
         });
     }
 
-    boundaryLayersGroup.addTo(map);
+    const wardCheckbox = document.getElementById('toggle-ward-layer');
+    const areaCheckbox = document.getElementById('toggle-area-layer');
+
+    if (!wardCheckbox || wardCheckbox.checked) wardBoundariesGroup.addTo(map);
+    if (!areaCheckbox || areaCheckbox.checked) areaBoundariesGroup.addTo(map);
     houseMarkersLayer.addTo(map);
 
     document.getElementById('stat-house-count').innerText = appData.houses ? appData.houses.length : 0;
@@ -826,18 +902,26 @@ function highlightHouse(houseId) {
         });
     }
 
-    Object.keys(boundaryLayerMap).forEach(bName => {
-        const bObj = boundaryLayerMap[bName];
-        let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound, bObj.feature));
-        if (isMatch && bObj && bObj.layer) {
-            bObj.layer.setStyle({
-                color: '#10b981',
-                fillColor: '#34d399',
-                fillOpacity: 0.5,
-                weight: 3
-            });
-        }
-    });
+    const highlightLayerMap = (layerMap) => {
+        Object.keys(layerMap).forEach(bName => {
+            const bObj = layerMap[bName];
+            let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound, bObj.feature));
+            if (isMatch && bObj && bObj.layer) {
+                bObj.layer.setStyle({
+                    color: '#10b981',
+                    fillColor: '#34d399',
+                    fillOpacity: 0.45,
+                    weight: 3
+                });
+                if (typeof bObj.layer.closeTooltip === 'function') {
+                    bObj.layer.closeTooltip();
+                }
+            }
+        });
+    };
+
+    highlightLayerMap(wardLayerMap);
+    highlightLayerMap(areaLayerMap);
 
     const panelTitle = document.getElementById('panel-title');
     const panelSubtitle = document.getElementById('panel-subtitle');
@@ -894,7 +978,7 @@ function highlightHouse(houseId) {
 function highlightBoundary(areaDisplayName) {
     resetMapHighlighting();
 
-    const bObj = boundaryLayerMap[areaDisplayName];
+    const bObj = wardLayerMap[areaDisplayName] || areaLayerMap[areaDisplayName];
     if (bObj && bObj.layer) {
         bObj.layer.setStyle({
             color: '#f59e0b',
@@ -943,7 +1027,7 @@ function highlightBoundary(areaDisplayName) {
     panelIcon.className = "w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-base";
     panelIcon.innerHTML = `<i class="fa-solid fa-draw-polygon"></i>`;
     panelTitle.innerText = areaDisplayName;
-    panelSubtitle.innerText = "Ward Boundary & Assigned Companionships";
+    panelSubtitle.innerText = "Boundary Inspection & Resident Houses";
 
     let compsHtml = compArray.length > 0
         ? compArray.map(c => `<span class="bg-amber-50 text-amber-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
@@ -979,16 +1063,25 @@ function highlightBoundary(areaDisplayName) {
 }
 
 function resetMapHighlighting() {
-    if (appData.boundaries && boundaryLayersGroup) {
-        boundaryLayersGroup.eachLayer(layer => {
-            layer.setStyle({
-                color: '#6366f1',
-                weight: 2,
-                fillColor: '#818cf8',
-                fillOpacity: 0.25
-            });
+    const resetLayerGroup = (layerMap, defaultColor, defaultFill) => {
+        Object.keys(layerMap).forEach(name => {
+            const bObj = layerMap[name];
+            if (bObj && bObj.layer) {
+                bObj.layer.setStyle({
+                    color: defaultColor,
+                    weight: 2,
+                    fillColor: defaultFill,
+                    fillOpacity: 0.25
+                });
+                if (typeof bObj.layer.closeTooltip === 'function') {
+                    bObj.layer.closeTooltip();
+                }
+            }
         });
-    }
+    };
+
+    resetLayerGroup(wardLayerMap, '#6366f1', '#818cf8');
+    resetLayerGroup(areaLayerMap, '#10b981', '#34d399');
 }
 
 function closeInfoPanel() {}
@@ -1026,7 +1119,7 @@ function handleSearch(query) {
         appData.boundaries.features.forEach(f => {
             const name = getFeatureDisplayName(f);
             if (name.toLowerCase().includes(q)) {
-                results.push({ type: 'boundary', title: name, subtitle: 'Ward Boundary', id: name });
+                results.push({ type: 'boundary', title: name, subtitle: 'Ward / Area Boundary', id: name });
             }
         });
     }

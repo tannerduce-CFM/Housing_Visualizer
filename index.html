@@ -50,12 +50,12 @@
             <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
                     <div class="inline-flex items-center space-x-2 bg-indigo-700/50 border border-indigo-500/30 px-3 py-1 rounded-full text-xs font-medium text-indigo-200 mb-3">
-                        <i class="fa-solid fa-bolt text-amber-400"></i>
-                        <span>Structured Ward Boundary ID Recognition Active</span>
+                        <i class="fa-solid fa-layer-group text-amber-400"></i>
+                        <span>Dual Layer Control: Ward Units & Teaching Areas</span>
                     </div>
                     <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Companionship & House Visualizer</h1>
                     <p class="mt-2 text-indigo-200 text-sm md:text-base max-w-xl">
-                        Upload Excel rosters (`houselistoct.xlsx`), select ward boundaries (`wards_base.geojson`), and explore spatial coverage interactively.
+                        Upload Excel rosters (`houselistoct.xlsx`), select ward boundaries (`mission_wards_and_areas (1).geojson`), and explore spatial coverage interactively.
                     </p>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-3">
@@ -101,13 +101,14 @@
                     <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4 text-lg">
                         <i class="fa-solid fa-draw-polygon"></i>
                     </div>
-                    <h2 class="font-bold text-slate-900 text-lg">2. Ward Base Boundaries</h2>
-                    <p class="text-xs text-slate-500 mt-1">Select pre-packaged ward boundary file or upload a custom GeoJSON polygon file.</p>
+                    <h2 class="font-bold text-slate-900 text-lg">2. Ward & Area Boundaries</h2>
+                    <p class="text-xs text-slate-500 mt-1">Select pre-packaged boundary file or upload a custom GeoJSON polygon file.</p>
                     
                     <div class="mt-4">
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Select Base Boundary File</label>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Select Boundary File</label>
                         <select id="base-boundary-select" onchange="handleBaseBoundarySelect(this.value)" class="block w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 mb-3">
-                            <option value="wards_base.geojson" selected>wards_base.geojson (Project Folder Default)</option>
+                            <option value="mission_wards_and_areas (1).geojson" selected>mission_wards_and_areas.geojson (Default)</option>
+                            <option value="wards_base.geojson">wards_base.geojson</option>
                             <option value="custom_upload">Upload Custom GeoJSON File Below...</option>
                         </select>
 
@@ -117,7 +118,7 @@
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                    <span id="boundary-status">Status: Selected (wards_base.geojson)</span>
+                    <span id="boundary-status">Status: Selected (mission_wards_and_areas.geojson)</span>
                     <i class="fa-solid fa-circle-check text-emerald-500" id="boundary-icon-status"></i>
                 </div>
             </div>
@@ -189,15 +190,42 @@
             <!-- Quick Stats / Legend pill -->
             <div class="hidden lg:flex items-center space-x-4 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
                 <span class="flex items-center"><i class="fa-solid fa-house text-indigo-600 mr-1.5"></i> <strong id="stat-house-count" class="text-slate-800 mr-1">0</strong> Houses</span>
-                <span class="flex items-center"><i class="fa-solid fa-draw-polygon text-amber-600 mr-1.5"></i> <strong id="stat-boundary-count" class="text-slate-800 mr-1">0</strong> Wards</span>
+                <span class="flex items-center"><i class="fa-solid fa-draw-polygon text-amber-600 mr-1.5"></i> <strong id="stat-boundary-count" class="text-slate-800 mr-1">0</strong> Boundaries</span>
                 <span class="flex items-center"><i class="fa-solid fa-users text-emerald-600 mr-1.5"></i> <strong id="stat-comp-count" class="text-slate-800 mr-1">0</strong> Companionships</span>
             </div>
         </header>
 
         <!-- Main Body: Map + Info Sidebar -->
         <div class="flex-1 flex relative overflow-hidden">
+            
             <!-- Map Container -->
-            <div id="leaflet-map" class="flex-1 h-full z-10"></div>
+            <div id="leaflet-map" class="flex-1 h-full z-10 relative">
+                
+                <!-- TOP-RIGHT LAYER TOGGLE CHECKBOX CONTROL BOX -->
+                <div class="absolute top-4 right-4 z-[1000] bg-white/95 backdrop-blur border border-slate-200 p-3 rounded-2xl shadow-xl space-y-2 text-xs">
+                    <div class="font-bold text-slate-700 border-b border-slate-100 pb-1.5 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-layer-group text-indigo-600"></i>
+                        <span>Map Layers</span>
+                    </div>
+                    
+                    <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition">
+                        <input type="checkbox" id="toggle-ward-layer" checked onchange="toggleBoundaryLayer('ward', this.checked)" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                        <span class="flex items-center text-slate-800 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-indigo-500 border border-indigo-700 inline-block mr-1.5"></span>
+                            Ward Boundaries (UNIT)
+                        </span>
+                    </label>
+
+                    <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition">
+                        <input type="checkbox" id="toggle-area-layer" checked onchange="toggleBoundaryLayer('area', this.checked)" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4">
+                        <span class="flex items-center text-slate-800 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-600 border-dashed inline-block mr-1.5"></span>
+                            Teaching Areas (AREA)
+                        </span>
+                    </label>
+                </div>
+
+            </div>
 
             <!-- Side Info Panel -->
             <div id="info-panel" class="w-full md:w-96 bg-white border-l border-slate-200 shadow-2xl z-20 flex flex-col transform translate-x-full md:translate-x-0 transition-transform duration-300 absolute md:relative right-0 top-0 bottom-0">
@@ -209,7 +237,7 @@
                         </div>
                         <div>
                             <h3 id="panel-title" class="font-bold text-slate-800 text-sm">Overview</h3>
-                            <p id="panel-subtitle" class="text-xs text-slate-400">Click a house or ward boundary on the map</p>
+                            <p id="panel-subtitle" class="text-xs text-slate-400">Click a house or boundary on the map</p>
                         </div>
                     </div>
                     <button onclick="closeInfoPanel()" class="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-200/50 transition md:hidden">
@@ -221,7 +249,7 @@
                 <div id="panel-body" class="flex-1 overflow-y-auto p-5 space-y-5 text-sm text-slate-600">
                     <div class="text-center py-12 text-slate-400">
                         <i class="fa-solid fa-hand-pointer text-3xl mb-3 text-slate-300"></i>
-                        <p class="text-xs">Select any house marker (🏠) or ward boundary on the map to inspect details, residents, and coverage areas.</p>
+                        <p class="text-xs">Select any house marker (🏠) or boundary on the map to inspect details, residents, and coverage areas.</p>
                     </div>
                 </div>
 
