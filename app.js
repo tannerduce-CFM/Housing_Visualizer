@@ -23,6 +23,9 @@ let houseLayerMap = {};
 let wardLayerMap = {};
 let areaLayerMap = {};
 
+// Active Zone Visibility Map (e.g. { "F": true, "M": false })
+let activeZoneVisibility = {};
+
 // Track whichever boundary polygon feature the mouse is currently hovering over
 let hoveredBoundaryLayer = null;
 
@@ -294,7 +297,7 @@ async function geocodeHouseAddressesNominatim(unmappedHouses, fullHouseList) {
     }, 800);
 }
 
-// Checkbox Layer Toggle Controls
+// Checkbox Boundary Toggle Controls
 function toggleBoundaryLayer(layerType, isChecked) {
     if (!map) return;
 
@@ -310,6 +313,82 @@ function toggleBoundaryLayer(layerType, isChecked) {
         } else if (areaBoundariesGroup) {
             map.removeLayer(areaBoundariesGroup);
         }
+    }
+}
+
+// Zone Checkbox Population & Toggle
+function populateZoneCheckboxes() {
+    const container = document.getElementById('zone-checkboxes-container');
+    if (!container) return;
+
+    const detectedZones = new Set();
+    if (appData.houses) {
+        appData.houses.forEach(h => {
+            if (h.zone) detectedZones.add(String(h.zone).toUpperCase().trim());
+        });
+    }
+
+    if (detectedZones.size === 0) {
+        container.innerHTML = `<span class="text-slate-400 italic text-[11px] col-span-2">No house data</span>`;
+        return;
+    }
+
+    const sortedZones = Array.from(detectedZones).sort();
+    container.innerHTML = sortedZones.map(zone => {
+        if (activeZoneVisibility[zone] === undefined) {
+            activeZoneVisibility[zone] = true; // Default enabled
+        }
+        const isChecked = activeZoneVisibility[zone] ? 'checked' : '';
+        return `
+            <label class="flex items-center space-x-1.5 cursor-pointer hover:bg-slate-50 p-1 rounded transition text-[11px]">
+                <input type="checkbox" data-zone="${zone}" ${isChecked} onchange="toggleZoneVisibility('${zone}', this.checked)" class="zone-checkbox rounded text-amber-500 focus:ring-amber-400 h-3.5 w-3.5">
+                <span class="font-semibold text-slate-700">${zone}</span>
+            </label>
+        `;
+    }).join('');
+}
+
+function toggleZoneVisibility(zone, isChecked) {
+    activeZoneVisibility[zone] = isChecked;
+
+    if (appData.houses && houseMarkersLayer) {
+        appData.houses.forEach(house => {
+            const hZone = house.zone ? String(house.zone).toUpperCase().trim() : '';
+            const marker = houseLayerMap[house.id];
+
+            if (marker) {
+                if (hZone === zone) {
+                    if (isChecked) {
+                        houseMarkersLayer.addLayer(marker);
+                    } else {
+                        houseMarkersLayer.removeLayer(marker);
+                    }
+                }
+            }
+        });
+    }
+}
+
+function setAllZones(enable) {
+    Object.keys(activeZoneVisibility).forEach(z => {
+        activeZoneVisibility[z] = enable;
+    });
+
+    document.querySelectorAll('.zone-checkbox').forEach(cb => {
+        cb.checked = enable;
+    });
+
+    if (appData.houses && houseMarkersLayer) {
+        appData.houses.forEach(house => {
+            const marker = houseLayerMap[house.id];
+            if (marker) {
+                if (enable) {
+                    houseMarkersLayer.addLayer(marker);
+                } else {
+                    houseMarkersLayer.removeLayer(marker);
+                }
+            }
+        });
     }
 }
 
@@ -654,7 +733,7 @@ function parseRosterSpreadsheet(rows) {
                         name: houseName || fullAddress,
                         address: fullAddress,
                         streetQuery: cleanStreetAddressForGeocoding(streetAddress, cityState),
-                        zone: zoneVal || 'Unassigned',
+                        zone: zoneVal ? String(zoneVal).toUpperCase().trim() : 'UNASSIGNED',
                         district: districtVal || '',
                         status: status || 'Open',
                         cost: formatRent(rentVal),
@@ -774,6 +853,7 @@ function initLeafletMap() {
             map.invalidateSize();
         }
 
+        populateZoneCheckboxes();
         renderMapLayers();
     } catch (err) {
         console.error("Map initialization error:", err);
@@ -841,7 +921,7 @@ function renderMapLayers() {
         } catch (e) {}
     }
 
-    // Render Houses
+    // Render Houses (Filtered by Zone Checkboxes)
     if (appData.houses && Array.isArray(appData.houses)) {
         appData.houses.forEach(house => {
             if (house && !isNaN(house.lat) && !isNaN(house.lng)) {
@@ -862,7 +942,12 @@ function renderMapLayers() {
 
                 const houseTitle = house.name || house.address || 'House Location';
                 marker.bindTooltip(`<strong>${houseTitle}</strong><br><span class="text-xs">Zone: ${house.zone || 'N/A'}</span>`);
-                houseMarkersLayer.addLayer(marker);
+
+                // Check Zone Visibility
+                const hZone = house.zone ? String(house.zone).toUpperCase().trim() : 'UNASSIGNED';
+                if (activeZoneVisibility[hZone] !== false) {
+                    houseMarkersLayer.addLayer(marker);
+                }
             }
         });
     }
@@ -1086,6 +1171,7 @@ function resetMapHighlighting() {
 
 function closeInfoPanel() {}
 
+// Search Bar Logic (Filtered Strictly by Checked Zones)
 function handleSearch(query) {
     const dropdown = document.getElementById('search-results-dropdown');
     if (!query.trim()) {
@@ -1099,18 +1185,23 @@ function handleSearch(query) {
 
     if (appData.houses) {
         appData.houses.forEach(h => {
-            if (
-                (h.name && h.name.toLowerCase().includes(q)) ||
-                (h.address && h.address.toLowerCase().includes(q)) ||
-                (h.zone && h.zone.toLowerCase().includes(q)) ||
-                (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))
-            ) {
-                results.push({
-                    type: 'house',
-                    title: h.name || h.address || 'House',
-                    subtitle: `House • Zone: ${h.zone || 'N/A'} • Areas: ${h.companionships ? h.companionships.join(', ') : 'None'}`,
-                    id: h.id
-                });
+            const hZone = h.zone ? String(h.zone).toUpperCase().trim() : 'UNASSIGNED';
+
+            // Strictly filter search results to checked zones!
+            if (activeZoneVisibility[hZone] !== false) {
+                if (
+                    (h.name && h.name.toLowerCase().includes(q)) ||
+                    (h.address && h.address.toLowerCase().includes(q)) ||
+                    (h.zone && h.zone.toLowerCase().includes(q)) ||
+                    (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))
+                ) {
+                    results.push({
+                        type: 'house',
+                        title: h.name || h.address || 'House',
+                        subtitle: `House • Zone: ${h.zone || 'N/A'} • Areas: ${h.companionships ? h.companionships.join(', ') : 'None'}`,
+                        id: h.id
+                    });
+                }
             }
         });
     }
