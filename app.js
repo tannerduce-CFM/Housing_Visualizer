@@ -1,9 +1,8 @@
 // ==================== CONFIGURATION ====================
-// Paste your Mapbox Access Token between the quotes below (e.g. "pk.eyJ1Ijo...")
+// Paste your Mapbox Access Token between quotes (e.g. "pk.eyJ1Ijo...")
 const MAPBOX_ACCESS_TOKEN = "pk.eyJ1IjoiY2ZtLW1hcCIsImEiOiJjbXZkMG04NWQwOTBzMndvcTQ0cjhiNjlvIn0.Z8A60hdQgmPgvdnP_Ry0fw";
 // =======================================================
 
-// Global Application State
 let appData = {
     houses: null,
     boundaries: null,
@@ -13,80 +12,53 @@ let appData = {
 let localAddressCache = {};
 let map = null;
 
-// Map Layer Groups
 let houseMarkersLayer = null;
 let wardBoundariesGroup = null;
 let areaBoundariesGroup = null;
 
-// Feature Maps for Quick Inspection
 let houseLayerMap = {};
 let wardLayerMap = {};
 let areaLayerMap = {};
 
-// Active Zone Visibility Map (e.g. { "F": true, "M": false })
-let activeZoneVisibility = {};
-
-// Track whichever boundary polygon feature the mouse is currently hovering over
+let activeHighlightedHouseId = null;
 let hoveredBoundaryLayer = null;
-
-// Global Toast Timeout Tracker
 let toastTimeout = null;
 
-// Detailed City/Zone Coordinates Fallback Map
 const zoneCoordinates = {
-    'f': [36.7468, -119.7726],        // Fresno Center
-    'fe': [36.7550, -119.7000],       // Fresno East
-    'fn': [36.8400, -119.7800],       // Fresno North
-    'fw': [36.7600, -119.8300],       // Fresno West
-    'm': [37.3022, -120.4830],        // Merced
-    'ma': [36.9613, -120.0607],       // Madera
-    'h': [36.3275, -119.6457],        // Hanford
-    'r': [36.5963, -119.4504],        // Reedley
-    'v': [36.3302, -119.2921],        // Visalia
-    'p': [36.0652, -119.0168],        // Porterville
-    'clovis': [36.8252, -119.7029],   // Clovis
-    'chowchilla': [37.1230, -120.2602], // Chowchilla
-    'sanger': [36.7080, -119.5560],   // Sanger
-    'mariposa': [37.4850, -119.9660], // Mariposa
-    'los banos': [37.0583, -120.8500],// Los Banos
-    'corcoran': [36.0980, -119.5590], // Corcoran
-    'selma': [36.5708, -119.6120],    // Selma
-    'kerman': [36.7236, -120.0599],   // Kerman
-    'lemoore': [36.3008, -119.7829]   // Lemoore
+    'f': [36.7468, -119.7726], 'fe': [36.7550, -119.7000], 'fn': [36.8400, -119.7800],
+    'fw': [36.7600, -119.8300], 'm': [37.3022, -120.4830], 'ma': [36.9613, -120.0607],
+    'h': [36.3275, -119.6457], 'r': [36.5963, -119.4504], 'v': [36.3302, -119.2921],
+    'p': [36.0652, -119.0168], 'clovis': [36.8252, -119.7029], 'chowchilla': [37.1230, -120.2602],
+    'sanger': [36.7080, -119.5560], 'mariposa': [37.4850, -119.9660], 'los banos': [37.0583, -120.8500],
+    'corcoran': [36.0980, -119.5590], 'selma': [36.5708, -119.6120], 'kerman': [36.7236, -120.0599],
+    'lemoore': [36.3008, -119.7829]
 };
 
-// On Page Load: Load local addresses_cache.json and default boundaries
+// On Page Load: Load addresses_cache.json if present
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('addresses_cache.json');
         if (response.ok) {
             localAddressCache = await response.json();
-            console.log(`Loaded ${Object.keys(localAddressCache).length} cached addresses locally.`);
+            console.log(`Loaded ${Object.keys(localAddressCache).length} cached addresses.`);
         }
     } catch (err) {
-        console.warn('addresses_cache.json not found or empty. Falling back to API geocoding.');
+        console.warn('addresses_cache.json not found or empty.');
     }
-    fetchBaseBoundaryFile('mission_wards_and_areas (1).geojson');
 });
 
-// Setup Mouseover/Mouseout Tracking for 'L' key layer depth manipulation
 function setupHoverTracking(layer) {
-    layer.on('mouseover', function(e) {
-        hoveredBoundaryLayer = e.target;
-    });
-    layer.on('mouseout', function() {
-        hoveredBoundaryLayer = null;
-    });
+    layer.on('mouseover', function(e) { hoveredBoundaryLayer = e.target; });
+    layer.on('mouseout', function() { hoveredBoundaryLayer = null; });
 }
 
-// Global 'L' Key Press Listener: Sends hovered overlapping layer to back
 window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'l' && !['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase())) {
         if (hoveredBoundaryLayer && typeof hoveredBoundaryLayer.bringToBack === 'function') {
             hoveredBoundaryLayer.bringToBack();
-            showToast("Sent overlapping boundary layer to back (Lower layer revealed)", "info");
+            showToast("Sent overlapping boundary to back", "info");
         } else {
-            showToast("Hover your mouse over an overlapping boundary area and press 'L' to reveal layers underneath.", "info");
+            showToast("Hover over an overlapping boundary area and press 'L'", "info");
         }
     }
 });
@@ -109,14 +81,9 @@ function getFeatureUnitId(feature) {
 
 function isUnitMatch(unitA, unitB, featureA = null) {
     if (!unitA || !unitB) return false;
-
     const idA = featureA ? getFeatureUnitId(featureA) : extractUnitNumber(unitA);
     const idB = extractUnitNumber(unitB);
-
-    if (idA && idB) {
-        return idA === idB;
-    }
-
+    if (idA && idB) return idA === idB;
     const aLower = String(unitA).toLowerCase();
     const bLower = String(unitB).toLowerCase();
     return aLower.includes(bLower) || bLower.includes(aLower);
@@ -127,7 +94,6 @@ function getFeatureDisplayName(feature) {
     const p = feature.properties;
     const name = p.name || p.Name || p.Ward || p.ward || p.unit || "Unnamed Area";
     const unitId = getFeatureUnitId(feature);
-    
     if (unitId && !name.includes(`(${unitId})`)) {
         return `${name} (#${unitId})`;
     }
@@ -137,16 +103,13 @@ function getFeatureDisplayName(feature) {
 function cleanStreetAddressForGeocoding(street, cityState) {
     let s = String(street || '').trim();
     let c = String(cityState || '').trim();
-
     s = s.replace(/#\s*\S+/gi, '')
          .replace(/\b(apt|apartment|suite|ste|unit)\b\s*\S+/gi, '')
          .replace(/\d+(st|nd|rd|th)?\s*floor.*/gi, '')
          .replace(/access from.*/gi, '')
          .replace(/\r?\n|\r/g, ' ')
          .trim();
-
     if (!c) c = 'California';
-
     return `${s}, ${c}`;
 }
 
@@ -156,7 +119,6 @@ async function geocodeHouseAddresses(houses) {
 
     houses.forEach(house => {
         if (house.isGeocoded) return;
-
         const rawAddress = house.address ? house.address.trim() : '';
         const cleanQuery = house.streetQuery ? house.streetQuery.trim() : '';
 
@@ -176,7 +138,7 @@ async function geocodeHouseAddresses(houses) {
     });
 
     if (cachedHitCount > 0) {
-        showToast(`Loaded ${cachedHitCount} house location(s) directly from addresses_cache.json!`, "success");
+        showToast(`Loaded ${cachedHitCount} house(s) from addresses_cache.json`, "success");
     }
 
     if (unmappedHouses.length === 0) {
@@ -214,7 +176,6 @@ async function geocodeHouseAddressesMapbox(unmappedHouses, fullHouseList) {
         try {
             const query = encodeURIComponent(house.streetQuery);
             const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${MAPBOX_ACCESS_TOKEN}&country=US&bbox=${bbox}&proximity=${proximity}&limit=1`;
-            
             const response = await fetch(url);
             const data = await response.json();
 
@@ -224,7 +185,6 @@ async function geocodeHouseAddressesMapbox(unmappedHouses, fullHouseList) {
                 house.lng = lng;
                 house.isGeocoded = true;
                 geocodedCount++;
-
                 localAddressCache[house.address] = { lat: house.lat, lng: house.lng };
 
                 if (map && houseLayerMap[house.id]) {
@@ -234,15 +194,13 @@ async function geocodeHouseAddressesMapbox(unmappedHouses, fullHouseList) {
         } catch (err) {
             console.warn(`Mapbox Geocoding failed for ${house.address}:`, err);
         }
-
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     document.getElementById('house-json-input').value = JSON.stringify(fullHouseList, null, 2);
-
     setTimeout(() => {
         progressContainer.classList.add('hidden');
-        showToast(`Finished Mapbox Geocoding! Resolved ${geocodedCount} house(s).`, "success");
+        showToast(`Geocoded ${geocodedCount} house(s).`, "success");
     }, 500);
 }
 
@@ -275,259 +233,34 @@ async function geocodeHouseAddressesNominatim(unmappedHouses, fullHouseList) {
                 house.lng = parseFloat(results[0].lon);
                 house.isGeocoded = true;
                 geocodedCount++;
-
                 localAddressCache[house.address] = { lat: house.lat, lng: house.lng };
 
                 if (map && houseLayerMap[house.id]) {
-                    houseLayerMap[house.id].setLatLng([lat, lng]);
+                    houseLayerMap[house.id].setLatLng([house.lat, house.lng]);
                 }
             }
         } catch (err) {
             console.warn(`Nominatim geocoding skipped for ${house.address}:`, err);
         }
-
         await new Promise(resolve => setTimeout(resolve, 1100));
     }
 
     document.getElementById('house-json-input').value = JSON.stringify(fullHouseList, null, 2);
-
     setTimeout(() => {
         progressContainer.classList.add('hidden');
-        showToast(`Finished geocoding! Placed ${geocodedCount} house(s) in Central CA.`, "success");
+        showToast(`Geocoded ${geocodedCount} house(s) in Central CA.`, "success");
     }, 800);
 }
 
-// Checkbox Boundary Toggle Controls
 function toggleBoundaryLayer(layerType, isChecked) {
     if (!map) return;
-
     if (layerType === 'ward') {
-        if (isChecked && wardBoundariesGroup) {
-            map.addLayer(wardBoundariesGroup);
-        } else if (wardBoundariesGroup) {
-            map.removeLayer(wardBoundariesGroup);
-        }
+        if (isChecked && wardBoundariesGroup) map.addLayer(wardBoundariesGroup);
+        else if (wardBoundariesGroup) map.removeLayer(wardBoundariesGroup);
     } else if (layerType === 'area') {
-        if (isChecked && areaBoundariesGroup) {
-            map.addLayer(areaBoundariesGroup);
-        } else if (areaBoundariesGroup) {
-            map.removeLayer(areaBoundariesGroup);
-        }
+        if (isChecked && areaBoundariesGroup) map.addLayer(areaBoundariesGroup);
+        else if (areaBoundariesGroup) map.removeLayer(areaBoundariesGroup);
     }
-}
-
-// Zone Checkbox Population & Toggle
-function populateZoneCheckboxes() {
-    const container = document.getElementById('zone-checkboxes-container');
-    if (!container) return;
-
-    const detectedZones = new Set();
-    if (appData.houses) {
-        appData.houses.forEach(h => {
-            if (h.zone) detectedZones.add(String(h.zone).toUpperCase().trim());
-        });
-    }
-
-    if (detectedZones.size === 0) {
-        container.innerHTML = `<span class="text-slate-400 italic text-[11px] col-span-2">No house data</span>`;
-        return;
-    }
-
-    const sortedZones = Array.from(detectedZones).sort();
-    container.innerHTML = sortedZones.map(zone => {
-        if (activeZoneVisibility[zone] === undefined) {
-            activeZoneVisibility[zone] = true; // Default enabled
-        }
-        const isChecked = activeZoneVisibility[zone] ? 'checked' : '';
-        return `
-            <label class="flex items-center space-x-1.5 cursor-pointer hover:bg-slate-50 p-1 rounded transition text-[11px]">
-                <input type="checkbox" data-zone="${zone}" ${isChecked} onchange="toggleZoneVisibility('${zone}', this.checked)" class="zone-checkbox rounded text-amber-500 focus:ring-amber-400 h-3.5 w-3.5">
-                <span class="font-semibold text-slate-700">${zone}</span>
-            </label>
-        `;
-    }).join('');
-}
-
-function toggleZoneVisibility(zone, isChecked) {
-    activeZoneVisibility[zone] = isChecked;
-
-    if (appData.houses && houseMarkersLayer) {
-        appData.houses.forEach(house => {
-            const hZone = house.zone ? String(house.zone).toUpperCase().trim() : '';
-            const marker = houseLayerMap[house.id];
-
-            if (marker) {
-                if (hZone === zone) {
-                    if (isChecked) {
-                        houseMarkersLayer.addLayer(marker);
-                    } else {
-                        houseMarkersLayer.removeLayer(marker);
-                    }
-                }
-            }
-        });
-    }
-}
-
-function setAllZones(enable) {
-    Object.keys(activeZoneVisibility).forEach(z => {
-        activeZoneVisibility[z] = enable;
-    });
-
-    document.querySelectorAll('.zone-checkbox').forEach(cb => {
-        cb.checked = enable;
-    });
-
-    if (appData.houses && houseMarkersLayer) {
-        appData.houses.forEach(house => {
-            const marker = houseLayerMap[house.id];
-            if (marker) {
-                if (enable) {
-                    houseMarkersLayer.addLayer(marker);
-                } else {
-                    houseMarkersLayer.removeLayer(marker);
-                }
-            }
-        });
-    }
-}
-
-function handleBaseBoundarySelect(val) {
-    if (val === 'custom_upload') {
-        document.getElementById('boundary-json-input').value = '';
-        document.getElementById('boundary-status').innerText = "Status: Awaiting custom file upload";
-        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-slate-300";
-    } else {
-        fetchBaseBoundaryFile(val);
-    }
-}
-
-async function fetchBaseBoundaryFile(filename) {
-    try {
-        const response = await fetch(filename);
-        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-        const data = await response.json();
-        
-        appData.boundaries = data;
-        document.getElementById('boundary-json-input').value = JSON.stringify(data, null, 2);
-        document.getElementById('boundary-status').innerText = `Status: Loaded (${filename})`;
-        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-emerald-500";
-    } catch (err) {
-        console.warn(`Could not auto-load ${filename}. Waiting for manual upload.`, err);
-        document.getElementById('boundary-status').innerText = "Status: Upload boundary file or paste JSON";
-        document.getElementById('boundary-icon-status').className = "fa-solid fa-circle-check text-slate-300";
-    }
-}
-
-// Mock Data definitions
-const mockHouses = [
-    {
-        id: "house-1",
-        address: "742 E Olive Ave (Tower District), Fresno, CA",
-        zone: "F",
-        lat: 36.7410,
-        lng: -119.8000,
-        capacity: 4,
-        companionships: ["Echo Ward 1.1"],
-        cost: "$1,500.00",
-        bedrooms: "2",
-        bathrooms: "2"
-    },
-    {
-        id: "house-2",
-        address: "1250 E Shepherd Ave (Northern Clovis), Clovis, CA",
-        zone: "FN",
-        lat: 36.8535,
-        lng: -119.7020,
-        capacity: 4,
-        companionships: ["Sierra Vista 1.1"],
-        cost: "$1,500.00",
-        bedrooms: "2",
-        bathrooms: "2"
-    }
-];
-
-const mockBoundaries = {
-    "type": "FeatureCollection",
-    "features": [
-        {
-            "type": "Feature",
-            "properties": {
-                "id": 181528,
-                "name": "Echo Ward",
-                "type": "UNIT"
-            },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [-119.8150, 36.7500],
-                        [-119.7850, 36.7500],
-                        [-119.7850, 36.7320],
-                        [-119.8150, 36.7320],
-                        [-119.8150, 36.7500]
-                    ]
-                ]
-            }
-        },
-        {
-            "type": "Feature",
-            "properties": {
-                "id": 21504,
-                "name": "Sierra Vista Ward",
-                "type": "UNIT"
-            },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [-119.7300, 36.8700],
-                        [-119.6700, 36.8700],
-                        [-119.6700, 36.8350],
-                        [-119.7300, 36.8350],
-                        [-119.7300, 36.8700]
-                    ]
-                ]
-            }
-        }
-    ]
-};
-
-const mockMapping = {
-    "Echo Ward 1.1": ["Echo (Spanish) (181528)"],
-    "Sierra Vista 1.1": ["Sierra Vista (21504)"]
-};
-
-function loadMockData() {
-    appData.houses = mockHouses;
-    appData.boundaries = mockBoundaries;
-    appData.mapping = mockMapping;
-
-    document.getElementById('house-json-input').value = JSON.stringify(mockHouses, null, 2);
-    document.getElementById('boundary-json-input').value = JSON.stringify(mockBoundaries, null, 2);
-    document.getElementById('mapping-json-input').value = JSON.stringify(mockMapping, null, 2);
-
-    updateStatusIndicators();
-    showToast("Mock data successfully loaded!", "success");
-}
-
-function downloadMockFiles() {
-    downloadJSON(mockHouses, "houses_template.json");
-    setTimeout(() => downloadJSON(mockBoundaries, "boundaries_template.geojson"), 300);
-    setTimeout(() => downloadJSON(mockMapping, "companionship_mapping_template.json"), 600);
-    showToast("Downloaded sample configuration files!", "info");
-}
-
-function downloadJSON(data, filename) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
 }
 
 function handleFileUpload(event, type) {
@@ -537,47 +270,69 @@ function handleFileUpload(event, type) {
     const filename = file.name.toLowerCase();
     const reader = new FileReader();
 
-    if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
+    if (filename.endsWith('.xlsx') || filename.endsWith('.xls') || filename.endsWith('.csv')) {
         reader.onload = function(e) {
             try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                processExcelWorkbook(workbook, type, file.name);
+                let workbook;
+                if (filename.endsWith('.csv')) {
+                    workbook = XLSX.read(e.target.result, { type: 'string' });
+                } else {
+                    const data = new Uint8Array(e.target.result);
+                    workbook = XLSX.read(data, { type: 'array' });
+                }
+
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                if (!rawRows || rawRows.length === 0) {
+                    showToast(`The sheet "${sheetName}" contains no rows.`, "info");
+                    return;
+                }
+
+                const parsed = parseRosterSpreadsheet(rawRows);
+
+                if (type === 'houses') {
+                    appData.houses = parsed.houses;
+                    document.getElementById('house-json-input').value = JSON.stringify(parsed.houses, null, 2);
+                    geocodeHouseAddresses(parsed.houses);
+                    showToast(`Loaded ${parsed.houses.length} houses from ${file.name}`, "success");
+                } else if (type === 'mapping') {
+                    appData.mapping = parsed.mappings;
+                    document.getElementById('mapping-json-input').value = JSON.stringify(parsed.mappings, null, 2);
+                    showToast(`Loaded mapping for ${Object.keys(parsed.mappings).length} companionships`, "success");
+                }
+
+                updateStatusIndicators();
             } catch (err) {
-                showToast(`Error reading Excel file: ${err.message}`, "error");
-                console.error(err);
+                showToast(`Error reading spreadsheet: ${err.message}`, "error");
             }
         };
-        reader.readAsArrayBuffer(file);
-    } else if (filename.endsWith('.csv')) {
-        reader.onload = function(e) {
-            try {
-                const text = e.target.result;
-                const workbook = XLSX.read(text, { type: 'string' });
-                processExcelWorkbook(workbook, type, file.name);
-            } catch (err) {
-                showToast(`Error reading CSV file: ${err.message}`, "error");
-                console.error(err);
-            }
-        };
-        reader.readAsText(file);
+
+        if (filename.endsWith('.csv')) reader.readAsText(file);
+        else reader.readAsArrayBuffer(file);
+
     } else {
         reader.onload = function(e) {
             try {
                 const content = e.target.result;
+                const parsed = JSON.parse(content);
+
                 if (type === 'houses') {
+                    appData.houses = parsed;
                     document.getElementById('house-json-input').value = content;
                 } else if (type === 'boundaries') {
+                    appData.boundaries = parsed;
                     document.getElementById('boundary-json-input').value = content;
-                    appData.boundaries = JSON.parse(content);
-                    document.getElementById('base-boundary-select').value = 'custom_upload';
                 } else if (type === 'mapping') {
+                    appData.mapping = parsed;
                     document.getElementById('mapping-json-input').value = content;
                 }
+
                 updateStatusIndicators();
                 showToast(`Loaded ${file.name}`, "success");
             } catch (err) {
-                showToast(`Error parsing file: ${err.message}`, "error");
+                showToast(`Error parsing JSON: ${err.message}`, "error");
             }
         };
         reader.readAsText(file);
@@ -587,24 +342,19 @@ function handleFileUpload(event, type) {
 function parseBedsBaths(rawStr) {
     if (!rawStr) return { bedrooms: "-", bathrooms: "-" };
     const text = String(rawStr).trim();
-
     const matchPlus = text.match(/(\d+(?:\.\d+)?)\s*\+\s*(\d+(?:\.\d+)?)/);
-    if (matchPlus) {
-        return { bedrooms: matchPlus[1], bathrooms: matchPlus[2] };
-    }
+    if (matchPlus) return { bedrooms: matchPlus[1], bathrooms: matchPlus[2] };
 
     let beds = "-";
     const matchBed = text.match(/(\d+)\s*bed[s]?/i);
     if (matchBed) beds = matchBed[1];
 
     let baths = "-";
-    if (/half\s*bath/i.test(text)) {
-        baths = "1.5";
-    } else {
+    if (/half\s*bath/i.test(text)) baths = "1.5";
+    else {
         const matchBath = text.match(/(\d+(?:\.\d+)?)\s*bath/i);
         if (matchBath) baths = matchBath[1];
     }
-
     return { bedrooms: beds, bathrooms: baths };
 }
 
@@ -616,42 +366,9 @@ function formatRent(rawRent) {
     return num ? `$${num}` : str;
 }
 
-function processExcelWorkbook(workbook, uploadType, filename) {
-    try {
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
-        if (!rawRows || rawRows.length === 0) {
-            showToast(`The sheet "${sheetName}" contains no rows.`, "info");
-            return;
-        }
-
-        const { houses, mappings, warnings } = parseRosterSpreadsheet(rawRows);
-
-        if (houses.length > 0) {
-            document.getElementById('house-json-input').value = JSON.stringify(houses, null, 2);
-            appData.houses = houses;
-            geocodeHouseAddresses(houses);
-        }
-        if (Object.keys(mappings).length > 0) {
-            document.getElementById('mapping-json-input').value = JSON.stringify(mappings, null, 2);
-            appData.mapping = mappings;
-        }
-
-        updateStatusIndicators();
-        showToast(`Loaded "${filename}": ${houses.length} houses processed.`, "success");
-
-    } catch (err) {
-        console.error("Spreadsheet Parsing Error:", err);
-        showToast(`Unable to parse Excel file: ${err.message}`, "error");
-    }
-}
-
 function parseRosterSpreadsheet(rows) {
     const housesMap = {};
     const mappingsMap = {};
-    const warnings = [];
 
     function getRowVal(row, candidates) {
         const rowKeys = Object.keys(row);
@@ -666,105 +383,91 @@ function parseRosterSpreadsheet(rows) {
     }
 
     rows.forEach((row, idx) => {
-        try {
-            const houseName = getRowVal(row, ['house name', 'house', 'residence']);
-            const status = getRowVal(row, ['status']);
-            const streetAddress = getRowVal(row, ['street address', 'street', 'address']);
-            const cityState = getRowVal(row, ['city, state', 'city', 'state']);
-            const teachingAreas = getRowVal(row, ['teaching area', 'area', 'missionaries', 'companionship']);
-            const maxCap = getRowVal(row, ['max capacity', 'capacity']);
-            const rentVal = getRowVal(row, ['lease rent amount', 'rent', 'cost']);
-            const bedsBathsVal = getRowVal(row, ['beds/baths', 'beds', 'baths']);
-            const zoneVal = getRowVal(row, ['zone']);
-            const districtVal = getRowVal(row, ['district']);
-            const phoneVal = getRowVal(row, ['phone', 'contact']);
-            const carVal = getRowVal(row, ['car']);
-            const unitsVal = getRowVal(row, ['ecclesiastical unit', 'ecclesiastical', 'boundaries']);
-            const latVal = parseFloat(getRowVal(row, ['lat', 'latitude']));
-            const lngVal = parseFloat(getRowVal(row, ['lng', 'lon', 'longitude']));
+        const houseName = getRowVal(row, ['house name', 'house', 'residence']);
+        const status = getRowVal(row, ['status']);
+        const streetAddress = getRowVal(row, ['street address', 'street', 'address']);
+        const cityState = getRowVal(row, ['city, state', 'city', 'state']);
+        const teachingAreas = getRowVal(row, ['teaching area', 'area', 'missionaries', 'companionship']);
+        const maxCap = getRowVal(row, ['max capacity', 'capacity']);
+        const rentVal = getRowVal(row, ['lease rent amount', 'rent', 'cost']);
+        const bedsBathsVal = getRowVal(row, ['beds/baths', 'beds', 'baths']);
+        const zoneVal = getRowVal(row, ['zone']);
+        const districtVal = getRowVal(row, ['district']);
+        const phoneVal = getRowVal(row, ['phone', 'contact']);
+        const carVal = getRowVal(row, ['car']);
+        const unitsVal = getRowVal(row, ['ecclesiastical unit', 'ecclesiastical', 'boundaries']);
+        const latVal = parseFloat(getRowVal(row, ['lat', 'latitude']));
+        const lngVal = parseFloat(getRowVal(row, ['lng', 'lon', 'longitude']));
 
-            if (!teachingAreas && !houseName && !streetAddress) {
-                warnings.push(`Row ${idx + 2}: Empty or unmapped row.`);
-                return;
-            }
+        const actualStreet = streetAddress || houseName;
+        let fullAddress = actualStreet;
+        if (streetAddress && cityState) fullAddress = `${streetAddress.replace(/\r?\n|\r/g, ' ')}, ${cityState}`;
+        else if (streetAddress) fullAddress = streetAddress.replace(/\r?\n|\r/g, ' ');
 
-            const actualStreet = streetAddress || houseName;
-            let fullAddress = actualStreet;
-            if (streetAddress && cityState) {
-                fullAddress = `${streetAddress.replace(/\r?\n|\r/g, ' ')}, ${cityState}`;
-            } else if (streetAddress) {
-                fullAddress = streetAddress.replace(/\r?\n|\r/g, ' ');
-            }
+        const { bedrooms, bathrooms } = parseBedsBaths(bedsBathsVal);
 
-            const { bedrooms, bathrooms } = parseBedsBaths(bedsBathsVal);
+        let compList = [];
+        if (teachingAreas) {
+            compList = teachingAreas.split(',').map(a => a.trim()).filter(a => a.length > 0);
+        }
 
-            let compList = [];
-            if (teachingAreas) {
-                compList = teachingAreas.split(',').map(a => a.trim()).filter(a => a.length > 0);
-            }
-
-            if (compList.length > 0 && unitsVal) {
-                const unitList = unitsVal.split(',').map(u => u.trim()).filter(u => u.length > 0);
-                compList.forEach(comp => {
-                    if (!mappingsMap[comp]) mappingsMap[comp] = [];
-                    unitList.forEach(u => {
-                        if (!mappingsMap[comp].includes(u)) mappingsMap[comp].push(u);
-                    });
+        if (compList.length > 0 && unitsVal) {
+            const unitList = unitsVal.split(',').map(u => u.trim()).filter(u => u.length > 0);
+            compList.forEach(comp => {
+                if (!mappingsMap[comp]) mappingsMap[comp] = [];
+                unitList.forEach(u => {
+                    if (!mappingsMap[comp].includes(u)) mappingsMap[comp].push(u);
                 });
-            }
+            });
+        }
 
-            if (fullAddress) {
-                const houseKey = houseName || fullAddress;
-                if (!housesMap[houseKey]) {
-                    let lat = !isNaN(latVal) ? latVal : null;
-                    let lng = !isNaN(lngVal) ? lngVal : null;
+        if (fullAddress) {
+            const houseKey = houseName || fullAddress;
+            if (!housesMap[houseKey]) {
+                let lat = !isNaN(latVal) ? latVal : null;
+                let lng = !isNaN(lngVal) ? lngVal : null;
 
-                    if (lat === null || lng === null) {
-                        const zoneKey = (zoneVal || '').toLowerCase().trim();
-                        const cityKey = (cityState || '').toLowerCase().split(',')[0].trim();
-                        const baseCoords = zoneCoordinates[cityKey] || zoneCoordinates[zoneKey] || [36.7800, -119.7500];
-                        const offsetCount = Object.keys(housesMap).length;
-                        lat = baseCoords[0] + ((offsetCount % 5) - 2) * 0.005;
-                        lng = baseCoords[1] + (Math.floor(offsetCount / 5) % 5 - 2) * 0.005;
-                    }
-
-                    housesMap[houseKey] = {
-                        id: `house-${Object.keys(housesMap).length + 1}`,
-                        name: houseName || fullAddress,
-                        address: fullAddress,
-                        streetQuery: cleanStreetAddressForGeocoding(streetAddress, cityState),
-                        zone: zoneVal ? String(zoneVal).toUpperCase().trim() : 'UNASSIGNED',
-                        district: districtVal || '',
-                        status: status || 'Open',
-                        cost: formatRent(rentVal),
-                        capacity: maxCap || 2,
-                        bedrooms: bedrooms,
-                        bathrooms: bathrooms,
-                        lat: lat,
-                        lng: lng,
-                        companionships: [],
-                        phones: [],
-                        car: carVal,
-                        isGeocoded: !isNaN(latVal) && !isNaN(lngVal)
-                    };
+                if (lat === null || lng === null) {
+                    const zoneKey = (zoneVal || '').toLowerCase().trim();
+                    const cityKey = (cityState || '').toLowerCase().split(',')[0].trim();
+                    const baseCoords = zoneCoordinates[cityKey] || zoneCoordinates[zoneKey] || [36.7800, -119.7500];
+                    const offsetCount = Object.keys(housesMap).length;
+                    lat = baseCoords[0] + ((offsetCount % 5) - 2) * 0.005;
+                    lng = baseCoords[1] + (Math.floor(offsetCount / 5) % 5 - 2) * 0.005;
                 }
 
-                compList.forEach(c => {
-                    if (!housesMap[houseKey].companionships.includes(c)) {
-                        housesMap[houseKey].companionships.push(c);
-                    }
-                });
+                housesMap[houseKey] = {
+                    id: `house-${Object.keys(housesMap).length + 1}`,
+                    name: houseName || fullAddress,
+                    address: fullAddress,
+                    streetQuery: cleanStreetAddressForGeocoding(streetAddress, cityState),
+                    zone: zoneVal ? String(zoneVal).toUpperCase().trim() : 'UNASSIGNED',
+                    district: districtVal || '',
+                    status: status || 'Open',
+                    cost: formatRent(rentVal),
+                    capacity: maxCap || 2,
+                    bedrooms: bedrooms,
+                    bathrooms: bathrooms,
+                    lat: lat,
+                    lng: lng,
+                    companionships: [],
+                    phones: [],
+                    car: carVal,
+                    isGeocoded: !isNaN(latVal) && !isNaN(lngVal)
+                };
             }
 
-        } catch (rowErr) {
-            warnings.push(`Row ${idx + 2}: ${rowErr.message}`);
+            compList.forEach(c => {
+                if (!housesMap[houseKey].companionships.includes(c)) {
+                    housesMap[houseKey].companionships.push(c);
+                }
+            });
         }
     });
 
     return {
         houses: Object.values(housesMap),
-        mappings: mappingsMap,
-        warnings: warnings
+        mappings: mappingsMap
     };
 }
 
@@ -792,25 +495,15 @@ function showToast(message, type = "info") {
     const toastIcon = document.getElementById('toast-icon');
 
     if (!toast || !toastMsg || !toastIcon) return;
-
-    if (toastTimeout) {
-        clearTimeout(toastTimeout);
-    }
+    if (toastTimeout) clearTimeout(toastTimeout);
 
     toastMsg.innerText = message;
-    if (type === "success") {
-        toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
-    } else if (type === "error") {
-        toastIcon.className = "fa-solid fa-triangle-exclamation text-rose-400";
-    } else {
-        toastIcon.className = "fa-solid fa-circle-info text-sky-400";
-    }
+    if (type === "success") toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+    else if (type === "error") toastIcon.className = "fa-solid fa-triangle-exclamation text-rose-400";
+    else toastIcon.className = "fa-solid fa-circle-info text-sky-400";
 
     toast.classList.remove('translate-y-[-200%]');
-
-    toastTimeout = setTimeout(() => {
-        toast.classList.add('translate-y-[-200%]');
-    }, 2500);
+    toastTimeout = setTimeout(() => { toast.classList.add('translate-y-[-200%]'); }, 2500);
 }
 
 async function launchMap() {
@@ -819,21 +512,23 @@ async function launchMap() {
         const boundText = document.getElementById('boundary-json-input').value.trim();
         const mapText = document.getElementById('mapping-json-input').value.trim();
 
+        if (!houseText && !boundText && !mapText) {
+            showToast("Please upload at least one file before launching the map.", "error");
+            return;
+        }
+
         appData.houses = houseText ? JSON.parse(houseText) : [];
         appData.boundaries = boundText ? JSON.parse(boundText) : { type: "FeatureCollection", features: [] };
         appData.mapping = mapText ? JSON.parse(mapText) : {};
     } catch (err) {
-        showToast("Error parsing input data. Please verify file content.", "error");
-        console.error(err);
+        showToast("Error parsing input data. Please verify file format.", "error");
         return;
     }
 
     document.getElementById('home-view').classList.add('hidden');
     document.getElementById('map-view').classList.remove('hidden');
 
-    setTimeout(() => {
-        initLeafletMap();
-    }, 100);
+    setTimeout(() => { initLeafletMap(); }, 100);
 }
 
 function returnToHome() {
@@ -852,15 +547,28 @@ function initLeafletMap() {
         } else {
             map.invalidateSize();
         }
-
-        populateZoneCheckboxes();
         renderMapLayers();
     } catch (err) {
         console.error("Map initialization error:", err);
     }
 }
 
-// Render Wards (UNIT), Teaching Areas (AREA), and Houses
+// Generate house marker HTML with dynamic highlighting
+function buildHouseMarkerHtml(isSelected = false) {
+    if (isSelected) {
+        return `
+            <div class="transition-transform duration-200 transform scale-125" style="background: #fef3c7; border: 3px solid #f59e0b; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.4), 0 10px 15px -3px rgba(0,0,0,0.3); font-size: 20px; cursor: pointer;">
+                🏠
+            </div>
+        `;
+    }
+    return `
+        <div class="transition-transform duration-150 hover:scale-110" style="background: white; border: 2px solid #4f46e5; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.15); font-size: 17px; cursor: pointer;">
+            🏠
+        </div>
+    `;
+}
+
 function renderMapLayers() {
     if (wardBoundariesGroup) map.removeLayer(wardBoundariesGroup);
     if (areaBoundariesGroup) map.removeLayer(areaBoundariesGroup);
@@ -880,24 +588,25 @@ function renderMapLayers() {
             const pType = (feature.properties && (feature.properties.type || feature.properties.rawType) || '').toUpperCase();
 
             const isWard = pType !== 'AREA';
+            
+            // Standard baseline styles (soft opacity so roads show through clearly)
             const layerStyle = isWard ? {
-                color: '#6366f1',       // Indigo line for Wards
-                weight: 2,
+                color: '#6366f1',
+                weight: 1.75,
                 fillColor: '#818cf8',
-                fillOpacity: 0.2
+                fillOpacity: 0.12
             } : {
-                color: '#10b981',       // Emerald line for Teaching Areas
-                weight: 2.5,
-                dashArray: '5, 5',      // Dashed line to easily distinguish areas
-                fillColor: '#34d399',
-                fillOpacity: 0.25
+                color: '#059669',
+                weight: 2,
+                dashArray: '5, 5',
+                fillColor: '#10b981',
+                fillOpacity: 0.12
             };
 
             const layer = L.geoJSON(feature, {
                 style: function() { return layerStyle; },
                 onEachFeature: function(feat, lyr) {
                     setupHoverTracking(lyr);
-
                     lyr.on('click', function(e) {
                         L.DomEvent.stopPropagation(e);
                         highlightBoundary(displayName);
@@ -907,10 +616,10 @@ function renderMapLayers() {
             });
 
             if (isWard) {
-                wardLayerMap[displayName] = { layer: layer, feature: feature };
+                wardLayerMap[displayName] = { layer: layer, feature: feature, type: 'WARD' };
                 wardBoundariesGroup.addLayer(layer);
             } else {
-                areaLayerMap[displayName] = { layer: layer, feature: feature };
+                areaLayerMap[displayName] = { layer: layer, feature: feature, type: 'AREA' };
                 areaBoundariesGroup.addLayer(layer);
             }
         });
@@ -921,15 +630,14 @@ function renderMapLayers() {
         } catch (e) {}
     }
 
-    // Render Houses (Filtered by Zone Checkboxes)
     if (appData.houses && Array.isArray(appData.houses)) {
         appData.houses.forEach(house => {
             if (house && !isNaN(house.lat) && !isNaN(house.lng)) {
                 const houseIcon = L.divIcon({
                     className: 'custom-house-marker',
-                    html: `<div style="background: white; border: 2px solid #4f46e5; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-size: 18px; cursor: pointer;">🏠</div>`,
-                    iconSize: [36, 36],
-                    iconAnchor: [18, 18]
+                    html: buildHouseMarkerHtml(false),
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17]
                 });
 
                 const marker = L.marker([house.lat, house.lng], { icon: houseIcon });
@@ -942,12 +650,7 @@ function renderMapLayers() {
 
                 const houseTitle = house.name || house.address || 'House Location';
                 marker.bindTooltip(`<strong>${houseTitle}</strong><br><span class="text-xs">Zone: ${house.zone || 'N/A'}</span>`);
-
-                // Check Zone Visibility
-                const hZone = house.zone ? String(house.zone).toUpperCase().trim() : 'UNASSIGNED';
-                if (activeZoneVisibility[hZone] !== false) {
-                    houseMarkersLayer.addLayer(marker);
-                }
+                houseMarkersLayer.addLayer(marker);
             }
         });
     }
@@ -968,46 +671,75 @@ function renderMapLayers() {
     document.getElementById('stat-comp-count').innerText = comps.size;
 }
 
+// Highlight House + Both Ward Boundaries & Teaching Area Boundaries
 function highlightHouse(houseId) {
     const house = appData.houses.find(h => h.id === houseId);
     if (!house) return;
 
     resetMapHighlighting();
 
-    const marker = houseLayerMap[houseId];
-    if (marker && house.lat && house.lng) {
+    // 1. Highlight the Selected House Pin with animated glow ring
+    activeHighlightedHouseId = houseId;
+    const activeMarker = houseLayerMap[houseId];
+    if (activeMarker && house.lat && house.lng) {
+        activeMarker.setIcon(L.divIcon({
+            className: 'custom-house-marker',
+            html: buildHouseMarkerHtml(true),
+            iconSize: [38, 38],
+            iconAnchor: [19, 19]
+        }));
         map.setView([house.lat, house.lng], 14, { animate: true });
     }
 
-    let coveredBoundaries = new Set();
-    if (house.companionships && appData.mapping) {
+    // 2. Identify all covered areas and wards associated with house
+    let assignedTeachingAreas = new Set();
+    let coveredWardUnits = new Set();
+
+    if (house.companionships) {
         house.companionships.forEach(comp => {
-            const assignedAreas = appData.mapping[comp] || [];
-            assignedAreas.forEach(area => coveredBoundaries.add(area));
+            assignedTeachingAreas.add(comp);
+            if (appData.mapping && appData.mapping[comp]) {
+                appData.mapping[comp].forEach(ward => coveredWardUnits.add(ward));
+            }
         });
     }
 
-    const highlightLayerMap = (layerMap) => {
-        Object.keys(layerMap).forEach(bName => {
-            const bObj = layerMap[bName];
-            let isMatch = Array.from(coveredBoundaries).some(cBound => isUnitMatch(bName, cBound, bObj.feature));
-            if (isMatch && bObj && bObj.layer) {
-                bObj.layer.setStyle({
-                    color: '#10b981',
-                    fillColor: '#34d399',
-                    fillOpacity: 0.45,
-                    weight: 3
-                });
-                if (typeof bObj.layer.closeTooltip === 'function') {
-                    bObj.layer.closeTooltip();
-                }
-            }
-        });
-    };
+    // 3. Highlight Matching Ward Boundaries (Soft Indigo)
+    Object.keys(wardLayerMap).forEach(wName => {
+        const wObj = wardLayerMap[wName];
+        let isMatch = Array.from(coveredWardUnits).some(u => isUnitMatch(wName, u, wObj.feature)) ||
+                      Array.from(assignedTeachingAreas).some(a => isUnitMatch(wName, a, wObj.feature));
+        
+        if (isMatch && wObj && wObj.layer) {
+            wObj.layer.setStyle({
+                color: '#6366f1',
+                fillColor: '#a5b4fc',
+                fillOpacity: 0.22,
+                weight: 2.5
+            });
+            if (typeof wObj.layer.closeTooltip === 'function') wObj.layer.closeTooltip();
+        }
+    });
 
-    highlightLayerMap(wardLayerMap);
-    highlightLayerMap(areaLayerMap);
+    // 4. Highlight Matching Teaching Areas in RED
+    Object.keys(areaLayerMap).forEach(aName => {
+        const aObj = areaLayerMap[aName];
+        let isMatch = Array.from(assignedTeachingAreas).some(a => isUnitMatch(aName, a, aObj.feature)) ||
+                      Array.from(coveredWardUnits).some(u => isUnitMatch(aName, u, aObj.feature));
+        
+        if (isMatch && aObj && aObj.layer) {
+            aObj.layer.setStyle({
+                color: '#e11d48',       // Distinct Rose-Red border
+                fillColor: '#f43f5e',   // Soft Red fill
+                fillOpacity: 0.20,      // Light, transparent shading so roads show through
+                weight: 2.5,
+                dashArray: '5, 5'
+            });
+            if (typeof aObj.layer.closeTooltip === 'function') aObj.layer.closeTooltip();
+        }
+    });
 
+    // 5. Update Sidebar Panel with cleanly divided sections
     const panelTitle = document.getElementById('panel-title');
     const panelSubtitle = document.getElementById('panel-subtitle');
     const panelIcon = document.getElementById('panel-icon');
@@ -1018,13 +750,13 @@ function highlightHouse(houseId) {
     panelTitle.innerText = house.name || house.address || 'House Details';
     panelSubtitle.innerText = house.zone ? `Zone: ${house.zone}` : "House Details";
 
-    let compsHtml = house.companionships && house.companionships.length > 0 
-        ? house.companionships.map(c => `<span class="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1">${c}</span>`).join('')
-        : '<span class="text-slate-400 italic">None assigned</span>';
+    let areasHtml = assignedTeachingAreas.size > 0 
+        ? Array.from(assignedTeachingAreas).map(a => `<span class="bg-rose-50 text-rose-800 border border-rose-200 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1.5"><i class="fa-solid fa-users text-rose-600 mr-1.5"></i>${a}</span>`).join('')
+        : '<span class="text-slate-400 italic text-xs">No teaching areas assigned</span>';
 
-    let boundsHtml = coveredBoundaries.size > 0
-        ? Array.from(coveredBoundaries).map(b => `<span class="bg-emerald-50 text-emerald-700 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-draw-polygon mr-1"></i>${b}</span>`).join('')
-        : '<span class="text-slate-400 italic">No assigned ward coverage</span>';
+    let wardsHtml = coveredWardUnits.size > 0
+        ? Array.from(coveredWardUnits).map(w => `<span class="bg-indigo-50 text-indigo-800 border border-indigo-200 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1.5"><i class="fa-solid fa-draw-polygon text-indigo-500 mr-1.5"></i>${w}</span>`).join('')
+        : '<span class="text-slate-400 italic text-xs">No ward boundaries mapped</span>';
 
     panelBody.innerHTML = `
         <div class="space-y-4">
@@ -1047,35 +779,46 @@ function highlightHouse(houseId) {
                 </div>
             </div>
 
+            <!-- Teaching Areas Section (Red Tag) -->
             <div>
-                <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Teaching Areas / Companionships</h4>
-                <div>${compsHtml}</div>
+                <div class="flex items-center space-x-1.5 mb-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                    <h4 class="text-xs font-bold uppercase tracking-wide text-slate-600">Assigned Teaching Areas (AREA)</h4>
+                </div>
+                <div>${areasHtml}</div>
             </div>
 
+            <!-- Ward Boundaries Section -->
             <div>
-                <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Covered Ward Units</h4>
-                <div>${boundsHtml}</div>
+                <div class="flex items-center space-x-1.5 mb-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                    <h4 class="text-xs font-bold uppercase tracking-wide text-slate-600">Covered Ward Units (UNIT)</h4>
+                </div>
+                <div>${wardsHtml}</div>
             </div>
         </div>
     `;
 }
 
+// Highlight clicked boundary (Red for AREA, Amber for WARD)
 function highlightBoundary(areaDisplayName) {
     resetMapHighlighting();
 
     const bObj = wardLayerMap[areaDisplayName] || areaLayerMap[areaDisplayName];
     if (bObj && bObj.layer) {
+        const isArea = bObj.type === 'AREA';
+
         bObj.layer.setStyle({
-            color: '#f59e0b',
-            fillColor: '#fbbf24',
-            fillOpacity: 0.5,
-            weight: 3
+            color: isArea ? '#e11d48' : '#d97706',
+            fillColor: isArea ? '#f43f5e' : '#fde68a',
+            fillOpacity: 0.25,
+            weight: 3,
+            dashArray: isArea ? '5, 5' : null
         });
         map.fitBounds(bObj.layer.getBounds(), { padding: [50, 50], animate: true });
     }
 
     let coveringComps = new Set();
-
     if (appData.mapping) {
         Object.keys(appData.mapping).forEach(comp => {
             const areas = appData.mapping[comp];
@@ -1094,10 +837,7 @@ function highlightBoundary(areaDisplayName) {
                     if (isMatch) coveringComps.add(comp);
                     return isMatch;
                 });
-
-                if (hasDirectArea) {
-                    residentHouses.push(house);
-                }
+                if (hasDirectArea) residentHouses.push(house);
             }
         });
     }
@@ -1109,13 +849,14 @@ function highlightBoundary(areaDisplayName) {
     const panelIcon = document.getElementById('panel-icon');
     const panelBody = document.getElementById('panel-body');
 
-    panelIcon.className = "w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-base";
+    const isArea = bObj && bObj.type === 'AREA';
+    panelIcon.className = `w-8 h-8 rounded-lg ${isArea ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'} flex items-center justify-center text-base`;
     panelIcon.innerHTML = `<i class="fa-solid fa-draw-polygon"></i>`;
     panelTitle.innerText = areaDisplayName;
-    panelSubtitle.innerText = "Boundary Inspection & Resident Houses";
+    panelSubtitle.innerText = isArea ? "Teaching Area Boundary" : "Ward Unit Boundary";
 
     let compsHtml = compArray.length > 0
-        ? compArray.map(c => `<span class="bg-amber-50 text-amber-700 font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
+        ? compArray.map(c => `<span class="${isArea ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-amber-50 text-amber-700'} font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
         : '<span class="text-slate-400 italic">No companionships assigned</span>';
 
     let housesHtml = residentHouses.length > 0
@@ -1130,12 +871,12 @@ function highlightBoundary(areaDisplayName) {
                 </div>
             </div>
         `).join('')
-        : '<span class="text-slate-400 italic">No registered houses assigned to this unit</span>';
+        : '<span class="text-slate-400 italic">No registered houses assigned to this area</span>';
 
     panelBody.innerHTML = `
         <div class="space-y-4">
             <div>
-                <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships Covering This Unit</h4>
+                <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships Covering This Area</h4>
                 <div>${compsHtml}</div>
             </div>
 
@@ -1148,30 +889,49 @@ function highlightBoundary(areaDisplayName) {
 }
 
 function resetMapHighlighting() {
-    const resetLayerGroup = (layerMap, defaultColor, defaultFill) => {
-        Object.keys(layerMap).forEach(name => {
-            const bObj = layerMap[name];
-            if (bObj && bObj.layer) {
-                bObj.layer.setStyle({
-                    color: defaultColor,
-                    weight: 2,
-                    fillColor: defaultFill,
-                    fillOpacity: 0.25
-                });
-                if (typeof bObj.layer.closeTooltip === 'function') {
-                    bObj.layer.closeTooltip();
-                }
-            }
-        });
-    };
+    // 1. Reset all house marker icons back to standard
+    if (activeHighlightedHouseId && houseLayerMap[activeHighlightedHouseId]) {
+        houseLayerMap[activeHighlightedHouseId].setIcon(L.divIcon({
+            className: 'custom-house-marker',
+            html: buildHouseMarkerHtml(false),
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
+        }));
+        activeHighlightedHouseId = null;
+    }
 
-    resetLayerGroup(wardLayerMap, '#6366f1', '#818cf8');
-    resetLayerGroup(areaLayerMap, '#10b981', '#34d399');
+    // 2. Reset Ward baseline styles
+    Object.keys(wardLayerMap).forEach(name => {
+        const bObj = wardLayerMap[name];
+        if (bObj && bObj.layer) {
+            bObj.layer.setStyle({
+                color: '#6366f1',
+                weight: 1.75,
+                fillColor: '#818cf8',
+                fillOpacity: 0.12
+            });
+            if (typeof bObj.layer.closeTooltip === 'function') bObj.layer.closeTooltip();
+        }
+    });
+
+    // 3. Reset Area baseline styles
+    Object.keys(areaLayerMap).forEach(name => {
+        const bObj = areaLayerMap[name];
+        if (bObj && bObj.layer) {
+            bObj.layer.setStyle({
+                color: '#059669',
+                weight: 2,
+                dashArray: '5, 5',
+                fillColor: '#10b981',
+                fillOpacity: 0.12
+            });
+            if (typeof bObj.layer.closeTooltip === 'function') bObj.layer.closeTooltip();
+        }
+    });
 }
 
 function closeInfoPanel() {}
 
-// Search Bar Logic (Filtered Strictly by Checked Zones)
 function handleSearch(query) {
     const dropdown = document.getElementById('search-results-dropdown');
     if (!query.trim()) {
@@ -1185,23 +945,18 @@ function handleSearch(query) {
 
     if (appData.houses) {
         appData.houses.forEach(h => {
-            const hZone = h.zone ? String(h.zone).toUpperCase().trim() : 'UNASSIGNED';
-
-            // Strictly filter search results to checked zones!
-            if (activeZoneVisibility[hZone] !== false) {
-                if (
-                    (h.name && h.name.toLowerCase().includes(q)) ||
-                    (h.address && h.address.toLowerCase().includes(q)) ||
-                    (h.zone && h.zone.toLowerCase().includes(q)) ||
-                    (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))
-                ) {
-                    results.push({
-                        type: 'house',
-                        title: h.name || h.address || 'House',
-                        subtitle: `House • Zone: ${h.zone || 'N/A'} • Areas: ${h.companionships ? h.companionships.join(', ') : 'None'}`,
-                        id: h.id
-                    });
-                }
+            if (
+                (h.name && h.name.toLowerCase().includes(q)) ||
+                (h.address && h.address.toLowerCase().includes(q)) ||
+                (h.zone && h.zone.toLowerCase().includes(q)) ||
+                (h.companionships && h.companionships.some(c => c.toLowerCase().includes(q)))
+            ) {
+                results.push({
+                    type: 'house',
+                    title: h.name || h.address || 'House',
+                    subtitle: `House • Zone: ${h.zone || 'N/A'} • Areas: ${h.companionships ? h.companionships.join(', ') : 'None'}`,
+                    id: h.id
+                });
             }
         });
     }
@@ -1210,7 +965,13 @@ function handleSearch(query) {
         appData.boundaries.features.forEach(f => {
             const name = getFeatureDisplayName(f);
             if (name.toLowerCase().includes(q)) {
-                results.push({ type: 'boundary', title: name, subtitle: 'Ward / Area Boundary', id: name });
+                const isWard = ((f.properties && f.properties.type) || '').toUpperCase() !== 'AREA';
+                results.push({
+                    type: 'boundary',
+                    title: name,
+                    subtitle: isWard ? 'Ward Unit Boundary' : 'Teaching Area Boundary',
+                    id: name
+                });
             }
         });
     }
@@ -1238,9 +999,6 @@ function selectSearchResult(type, id) {
     document.getElementById('search-results-dropdown').classList.add('hidden');
     document.getElementById('search-input').value = '';
 
-    if (type === 'house') {
-        highlightHouse(id);
-    } else if (type === 'boundary') {
-        highlightBoundary(id);
-    }
+    if (type === 'house') highlightHouse(id);
+    else if (type === 'boundary') highlightBoundary(id);
 }

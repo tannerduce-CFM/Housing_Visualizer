@@ -23,13 +23,13 @@
 </head>
 <body class="h-full bg-slate-50 text-slate-800 antialiased flex flex-col">
 
-    <!-- Notification Banner / Toast -->
+    <!-- Toast Notification -->
     <div id="toast" class="fixed top-5 right-5 z-50 transform translate-y-[-200%] transition-transform duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm max-w-md">
         <i id="toast-icon" class="fa-solid fa-circle-info text-sky-400 text-base"></i>
         <span id="toast-message">Notification message here</span>
     </div>
 
-    <!-- Floating Geocoding Progress Bar Banner -->
+    <!-- Geocoding Progress Bar -->
     <div id="geocoding-progress-container" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex flex-col space-y-2 border border-slate-700 w-11/12 max-w-lg">
         <div class="flex items-center justify-between text-xs font-semibold">
             <span class="flex items-center text-indigo-400">
@@ -45,33 +45,21 @@
 
     <!-- ==================== HOMESCREEN VIEW ==================== -->
     <div id="home-view" class="flex-1 flex flex-col overflow-y-auto">
-        <!-- Hero Header -->
         <header class="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white py-12 px-6 shadow-lg">
             <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
                     <div class="inline-flex items-center space-x-2 bg-indigo-700/50 border border-indigo-500/30 px-3 py-1 rounded-full text-xs font-medium text-indigo-200 mb-3">
-                        <i class="fa-solid fa-layer-group text-amber-400"></i>
-                        <span>Zone Filtering & Layer Controls Active</span>
+                        <i class="fa-solid fa-map-location-dot text-amber-400"></i>
+                        <span>Geographic Intelligence & Housing Dashboard</span>
                     </div>
                     <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Companionship & House Visualizer</h1>
                     <p class="mt-2 text-indigo-200 text-sm md:text-base max-w-xl">
-                        Upload Excel rosters (`houselistoct.xlsx`), select ward boundaries (`mission_wards_and_areas (1).geojson`), and explore spatial coverage interactively.
+                        Upload your house rosters, boundary GeoJSON files, and area mapping files independently.
                     </p>
-                </div>
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <button onclick="loadMockData()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-3 rounded-xl shadow-lg hover:shadow-xl transition flex items-center justify-center space-x-2 text-sm">
-                        <i class="fa-solid fa-bolt"></i>
-                        <span>Load Quick-Start Mock Data</span>
-                    </button>
-                    <button onclick="downloadMockFiles()" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-medium px-4 py-3 rounded-xl transition flex items-center justify-center space-x-2 text-sm">
-                        <i class="fa-solid fa-download"></i>
-                        <span>Download Templates</span>
-                    </button>
                 </div>
             </div>
         </header>
 
-        <!-- Main Configuration Area -->
         <main class="flex-1 max-w-5xl w-full mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-6">
             
             <!-- Card 1: Houses File -->
@@ -81,12 +69,11 @@
                         <i class="fa-solid fa-house"></i>
                     </div>
                     <h2 class="font-bold text-slate-900 text-lg">1. House List File</h2>
-                    <p class="text-xs text-slate-500 mt-1">Excel (`houselistoct.xlsx`), CSV, or JSON with address, rent, capacity, beds/baths, & zone.</p>
+                    <p class="text-xs text-slate-500 mt-1">Upload Excel (`houselistoct.xlsx`), CSV, or JSON house list.</p>
                     
                     <div class="mt-4">
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload Excel / CSV / JSON</label>
                         <input type="file" id="house-file-input" accept=".json,.csv,.xlsx,.xls" onchange="handleFileUpload(event, 'houses')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-3">
-                        <textarea id="house-json-input" rows="5" placeholder="Parsed JSON house data will appear here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                        <textarea id="house-json-input" rows="5" placeholder="Parsed house JSON data will appear here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
@@ -101,41 +88,32 @@
                     <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4 text-lg">
                         <i class="fa-solid fa-draw-polygon"></i>
                     </div>
-                    <h2 class="font-bold text-slate-900 text-lg">2. Ward & Area Boundaries</h2>
-                    <p class="text-xs text-slate-500 mt-1">Select pre-packaged boundary file or upload a custom GeoJSON polygon file.</p>
+                    <h2 class="font-bold text-slate-900 text-lg">2. Boundary File</h2>
+                    <p class="text-xs text-slate-500 mt-1">Upload your GeoJSON boundary file (`mission_wards_and_areas.geojson`).</p>
                     
                     <div class="mt-4">
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Select Boundary File</label>
-                        <select id="base-boundary-select" onchange="handleBaseBoundarySelect(this.value)" class="block w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 mb-3">
-                            <option value="mission_wards_and_areas (1).geojson" selected>mission_wards_and_areas.geojson (Default)</option>
-                            <option value="wards_base.geojson">wards_base.geojson</option>
-                            <option value="custom_upload">Upload Custom GeoJSON File Below...</option>
-                        </select>
-
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload Custom GeoJSON</label>
                         <input type="file" id="boundary-file-input" accept=".json,.geojson" onchange="handleFileUpload(event, 'boundaries')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer mb-3">
-                        <textarea id="boundary-json-input" rows="4" placeholder="Boundary GeoJSON data will appear here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+                        <textarea id="boundary-json-input" rows="5" placeholder="Boundary GeoJSON data will appear here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                    <span id="boundary-status">Status: Selected (mission_wards_and_areas.geojson)</span>
-                    <i class="fa-solid fa-circle-check text-emerald-500" id="boundary-icon-status"></i>
+                    <span id="boundary-status">Status: No data loaded</span>
+                    <i class="fa-solid fa-circle-check text-slate-300" id="boundary-icon-status"></i>
                 </div>
             </div>
 
-            <!-- Card 3: Companionship Coverage Rules -->
+            <!-- Card 3: Companionship Mapping -->
             <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between hover:shadow-md transition">
                 <div>
                     <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 text-lg">
                         <i class="fa-solid fa-users-rectangle"></i>
                     </div>
                     <h2 class="font-bold text-slate-900 text-lg">3. Companionship Mapping</h2>
-                    <p class="text-xs text-slate-500 mt-1">Excel roster or JSON configuration mapping companionships to coverage areas.</p>
+                    <p class="text-xs text-slate-500 mt-1">Upload Excel roster or mapping JSON (`DefaultTeachingAreas.xlsx`).</p>
                     
                     <div class="mt-4">
-                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Upload Excel / CSV / JSON</label>
                         <input type="file" id="mapping-file-input" accept=".json,.csv,.xlsx,.xls" onchange="handleFileUpload(event, 'mapping')" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer mb-3">
-                        <textarea id="mapping-json-input" rows="5" placeholder="Paste mapping JSON here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                        <textarea id="mapping-json-input" rows="5" placeholder="Mapping JSON will appear here..." class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
@@ -146,11 +124,10 @@
 
         </main>
 
-        <!-- Go Button Bar -->
         <footer class="bg-white border-t border-slate-200 py-6 px-6 text-center">
             <div class="max-w-5xl mx-auto flex items-center justify-between">
                 <div class="text-xs text-slate-500">
-                    <i class="fa-solid fa-database text-indigo-500 mr-1"></i> Address cache file (`addresses_cache.json`) loaded.
+                    <i class="fa-solid fa-database text-indigo-500 mr-1"></i> Ready when files are uploaded.
                 </div>
                 <button onclick="launchMap()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition flex items-center space-x-3 text-base">
                     <span>Launch Map Visualizer</span>
@@ -164,7 +141,6 @@
     <!-- ==================== MAP & VISUALIZER VIEW ==================== -->
     <div id="map-view" class="hidden flex-1 flex flex-col h-full overflow-hidden">
         
-        <!-- Top Navigation / Search Bar Header -->
         <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between z-20 shadow-sm flex-wrap gap-3">
             <div class="flex items-center space-x-3">
                 <button onclick="returnToHome()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2.5 rounded-xl transition text-sm flex items-center space-x-2">
@@ -187,7 +163,7 @@
                 <div id="search-results-dropdown" class="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto hidden z-50"></div>
             </div>
 
-            <!-- Quick Stats / Legend pill -->
+            <!-- Stats -->
             <div class="hidden lg:flex items-center space-x-4 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
                 <span class="flex items-center"><i class="fa-solid fa-house text-indigo-600 mr-1.5"></i> <strong id="stat-house-count" class="text-slate-800 mr-1">0</strong> Houses</span>
                 <span class="flex items-center"><i class="fa-solid fa-draw-polygon text-amber-600 mr-1.5"></i> <strong id="stat-boundary-count" class="text-slate-800 mr-1">0</strong> Boundaries</span>
@@ -195,69 +171,36 @@
             </div>
         </header>
 
-        <!-- Main Body: Map + Info Sidebar -->
         <div class="flex-1 flex relative overflow-hidden">
             
-            <!-- Map Container -->
             <div id="leaflet-map" class="flex-1 h-full z-10 relative">
-                
-                <!-- MOVED TO BOTTOM-LEFT: LAYER & ZONE CONTROLS -->
-                <div class="absolute bottom-6 left-4 z-[1000] bg-white/95 backdrop-blur border border-slate-200 p-3.5 rounded-2xl shadow-xl w-52 space-y-3 text-xs max-h-[75vh] overflow-y-auto">
+                <!-- Checkboxes on Bottom-Left -->
+                <div class="absolute bottom-6 left-4 z-[1000] bg-white/95 backdrop-blur border border-slate-200 p-3 rounded-2xl shadow-xl space-y-2 text-xs">
+                    <div class="font-bold text-slate-700 border-b border-slate-100 pb-1 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-layer-group text-indigo-600"></i>
+                        <span>Boundaries</span>
+                    </div>
                     
-                    <!-- Boundary Controls -->
-                    <div>
-                        <div class="font-bold text-slate-700 border-b border-slate-100 pb-1 mb-2 flex items-center justify-between">
-                            <span class="flex items-center space-x-1.5">
-                                <i class="fa-solid fa-layer-group text-indigo-600"></i>
-                                <span>Boundaries</span>
-                            </span>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition">
-                                <input type="checkbox" id="toggle-ward-layer" checked onchange="toggleBoundaryLayer('ward', this.checked)" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
-                                <span class="flex items-center text-slate-800 font-medium">
-                                    <span class="w-3 h-3 rounded-full bg-indigo-500 border border-indigo-700 inline-block mr-1.5"></span>
-                                    Wards
-                                </span>
-                            </label>
+                    <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition">
+                        <input type="checkbox" id="toggle-ward-layer" checked onchange="toggleBoundaryLayer('ward', this.checked)" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                        <span class="flex items-center text-slate-800 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-indigo-500 border border-indigo-700 inline-block mr-1.5"></span>
+                            Wards
+                        </span>
+                    </label>
 
-                            <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition">
-                                <input type="checkbox" id="toggle-area-layer" checked onchange="toggleBoundaryLayer('area', this.checked)" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4">
-                                <span class="flex items-center text-slate-800 font-medium">
-                                    <span class="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-600 border-dashed inline-block mr-1.5"></span>
-                                    Areas
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Zone Toggles Section -->
-                    <div class="pt-2 border-t border-slate-100">
-                        <div class="font-bold text-slate-700 pb-1 mb-1.5 flex items-center justify-between">
-                            <span class="flex items-center space-x-1.5">
-                                <i class="fa-solid fa-house-user text-amber-500"></i>
-                                <span>Zones</span>
-                            </span>
-                            <div class="space-x-1 text-[10px] text-indigo-600 font-medium">
-                                <button onclick="setAllZones(true)" class="hover:underline">All</button>
-                                <span>•</span>
-                                <button onclick="setAllZones(false)" class="hover:underline">None</button>
-                            </div>
-                        </div>
-                        
-                        <!-- Container dynamically populated with Zone Checkboxes -->
-                        <div id="zone-checkboxes-container" class="grid grid-cols-2 gap-1 max-h-36 overflow-y-auto pr-1">
-                            <span class="text-slate-400 italic text-[11px] col-span-2">No house data</span>
-                        </div>
-                    </div>
-
+                    <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition">
+                        <input type="checkbox" id="toggle-area-layer" checked onchange="toggleBoundaryLayer('area', this.checked)" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4">
+                        <span class="flex items-center text-slate-800 font-medium">
+                            <span class="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-600 border-dashed inline-block mr-1.5"></span>
+                            Areas
+                        </span>
+                    </label>
                 </div>
-
             </div>
 
             <!-- Side Info Panel -->
             <div id="info-panel" class="w-full md:w-96 bg-white border-l border-slate-200 shadow-2xl z-20 flex flex-col transform translate-x-full md:translate-x-0 transition-transform duration-300 absolute md:relative right-0 top-0 bottom-0">
-                <!-- Panel Header -->
                 <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                     <div class="flex items-center space-x-2">
                         <div id="panel-icon" class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
@@ -273,15 +216,13 @@
                     </button>
                 </div>
 
-                <!-- Panel Content Body -->
                 <div id="panel-body" class="flex-1 overflow-y-auto p-5 space-y-5 text-sm text-slate-600">
                     <div class="text-center py-12 text-slate-400">
                         <i class="fa-solid fa-hand-pointer text-3xl mb-3 text-slate-300"></i>
-                        <p class="text-xs">Select any house marker (🏠) or boundary on the map to inspect details, residents, and coverage areas.</p>
+                        <p class="text-xs">Select any house marker (🏠) or boundary on the map to inspect details.</p>
                     </div>
                 </div>
 
-                <!-- Panel Footer / Quick action -->
                 <div class="p-4 border-t border-slate-100 bg-slate-50 text-xs text-slate-400 flex items-center justify-between">
                     <span>Interactive Visualizer</span>
                     <button onclick="resetMapHighlighting()" class="text-indigo-600 hover:underline font-medium">Reset Highlights</button>
