@@ -34,7 +34,6 @@ const zoneCoordinates = {
     'lemoore': [36.3008, -119.7829]
 };
 
-// On Page Load: Load addresses_cache.json if present
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('addresses_cache.json');
@@ -394,7 +393,6 @@ function parseRosterSpreadsheet(rows) {
         const zoneVal = getRowVal(row, ['zone']);
         const districtVal = getRowVal(row, ['district']);
         const phoneVal = getRowVal(row, ['phone', 'contact']);
-        const carVal = getRowVal(row, ['car']);
         const unitsVal = getRowVal(row, ['ecclesiastical unit', 'ecclesiastical', 'boundaries']);
         const latVal = parseFloat(getRowVal(row, ['lat', 'latitude']));
         const lngVal = parseFloat(getRowVal(row, ['lng', 'lon', 'longitude']));
@@ -452,7 +450,6 @@ function parseRosterSpreadsheet(rows) {
                     lng: lng,
                     companionships: [],
                     phones: [],
-                    car: carVal,
                     isGeocoded: !isNaN(latVal) && !isNaN(lngVal)
                 };
             }
@@ -553,7 +550,6 @@ function initLeafletMap() {
     }
 }
 
-// Generate house marker HTML with dynamic highlighting
 function buildHouseMarkerHtml(isSelected = false) {
     if (isSelected) {
         return `
@@ -589,7 +585,6 @@ function renderMapLayers() {
 
             const isWard = pType !== 'AREA';
             
-            // Standard baseline styles (soft opacity so roads show through clearly)
             const layerStyle = isWard ? {
                 color: '#6366f1',
                 weight: 1.75,
@@ -671,14 +666,30 @@ function renderMapLayers() {
     document.getElementById('stat-comp-count').innerText = comps.size;
 }
 
-// Highlight House + Both Ward Boundaries & Teaching Area Boundaries
+function navigateToBoundary(targetName) {
+    if (wardLayerMap[targetName] || areaLayerMap[targetName]) {
+        highlightBoundary(targetName);
+        return;
+    }
+
+    const allBoundaries = { ...wardLayerMap, ...areaLayerMap };
+    for (let bName in allBoundaries) {
+        if (isUnitMatch(bName, targetName, allBoundaries[bName].feature)) {
+            highlightBoundary(bName);
+            return;
+        }
+    }
+
+    showToast(`Boundary "${targetName}" is not loaded in current GeoJSON.`, "info");
+}
+
 function highlightHouse(houseId) {
     const house = appData.houses.find(h => h.id === houseId);
     if (!house) return;
 
     resetMapHighlighting();
 
-    // 1. Highlight the Selected House Pin with animated glow ring
+    // 1. Highlight Selected House Pin and elevate above polygons
     activeHighlightedHouseId = houseId;
     const activeMarker = houseLayerMap[houseId];
     if (activeMarker && house.lat && house.lng) {
@@ -688,10 +699,12 @@ function highlightHouse(houseId) {
             iconSize: [38, 38],
             iconAnchor: [19, 19]
         }));
+        if (typeof activeMarker.setZIndexOffset === 'function') {
+            activeMarker.setZIndexOffset(1000);
+        }
         map.setView([house.lat, house.lng], 14, { animate: true });
     }
 
-    // 2. Identify all covered areas and wards associated with house
     let assignedTeachingAreas = new Set();
     let coveredWardUnits = new Set();
 
@@ -704,7 +717,7 @@ function highlightHouse(houseId) {
         });
     }
 
-    // 3. Highlight Matching Ward Boundaries (Soft Indigo)
+    // 2. Highlight Matching Ward Boundaries & elevate
     Object.keys(wardLayerMap).forEach(wName => {
         const wObj = wardLayerMap[wName];
         let isMatch = Array.from(coveredWardUnits).some(u => isUnitMatch(wName, u, wObj.feature)) ||
@@ -717,11 +730,14 @@ function highlightHouse(houseId) {
                 fillOpacity: 0.22,
                 weight: 2.5
             });
+            if (typeof wObj.layer.bringToFront === 'function') {
+                wObj.layer.bringToFront();
+            }
             if (typeof wObj.layer.closeTooltip === 'function') wObj.layer.closeTooltip();
         }
     });
 
-    // 4. Highlight Matching Teaching Areas in RED
+    // 3. Highlight Matching Teaching Areas in RED & elevate above wards
     Object.keys(areaLayerMap).forEach(aName => {
         const aObj = areaLayerMap[aName];
         let isMatch = Array.from(assignedTeachingAreas).some(a => isUnitMatch(aName, a, aObj.feature)) ||
@@ -729,17 +745,20 @@ function highlightHouse(houseId) {
         
         if (isMatch && aObj && aObj.layer) {
             aObj.layer.setStyle({
-                color: '#e11d48',       // Distinct Rose-Red border
-                fillColor: '#f43f5e',   // Soft Red fill
-                fillOpacity: 0.20,      // Light, transparent shading so roads show through
+                color: '#e11d48',
+                fillColor: '#f43f5e',
+                fillOpacity: 0.20,
                 weight: 2.5,
                 dashArray: '5, 5'
             });
+            if (typeof aObj.layer.bringToFront === 'function') {
+                aObj.layer.bringToFront();
+            }
             if (typeof aObj.layer.closeTooltip === 'function') aObj.layer.closeTooltip();
         }
     });
 
-    // 5. Update Sidebar Panel with cleanly divided sections
+    // 4. Update Sidebar Panel
     const panelTitle = document.getElementById('panel-title');
     const panelSubtitle = document.getElementById('panel-subtitle');
     const panelIcon = document.getElementById('panel-icon');
@@ -751,11 +770,23 @@ function highlightHouse(houseId) {
     panelSubtitle.innerText = house.zone ? `Zone: ${house.zone}` : "House Details";
 
     let areasHtml = assignedTeachingAreas.size > 0 
-        ? Array.from(assignedTeachingAreas).map(a => `<span class="bg-rose-50 text-rose-800 border border-rose-200 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1.5"><i class="fa-solid fa-users text-rose-600 mr-1.5"></i>${a}</span>`).join('')
+        ? Array.from(assignedTeachingAreas).map(a => `
+            <button onclick="navigateToBoundary('${a.replace(/'/g, "\\'")}')" class="group text-left bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 hover:border-rose-300 font-medium px-2.5 py-1.5 rounded-xl text-xs mr-1 inline-flex items-center mb-1.5 transition transform hover:scale-[1.02]">
+                <i class="fa-solid fa-users text-rose-600 mr-1.5"></i>
+                <span>${a}</span>
+                <i class="fa-solid fa-arrow-right text-[10px] ml-1.5 opacity-0 group-hover:opacity-100 transition"></i>
+            </button>
+        `).join('')
         : '<span class="text-slate-400 italic text-xs">No teaching areas assigned</span>';
 
     let wardsHtml = coveredWardUnits.size > 0
-        ? Array.from(coveredWardUnits).map(w => `<span class="bg-indigo-50 text-indigo-800 border border-indigo-200 font-medium px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1.5"><i class="fa-solid fa-draw-polygon text-indigo-500 mr-1.5"></i>${w}</span>`).join('')
+        ? Array.from(coveredWardUnits).map(w => `
+            <button onclick="navigateToBoundary('${w.replace(/'/g, "\\'")}')" class="group text-left bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 hover:border-indigo-300 font-medium px-2.5 py-1.5 rounded-xl text-xs mr-1 inline-flex items-center mb-1.5 transition transform hover:scale-[1.02]">
+                <i class="fa-solid fa-draw-polygon text-indigo-500 mr-1.5"></i>
+                <span>${w}</span>
+                <i class="fa-solid fa-arrow-right text-[10px] ml-1.5 opacity-0 group-hover:opacity-100 transition"></i>
+            </button>
+        `).join('')
         : '<span class="text-slate-400 italic text-xs">No ward boundaries mapped</span>';
 
     panelBody.innerHTML = `
@@ -779,28 +810,33 @@ function highlightHouse(houseId) {
                 </div>
             </div>
 
-            <!-- Teaching Areas Section (Red Tag) -->
+            <!-- Teaching Areas Section -->
             <div>
-                <div class="flex items-center space-x-1.5 mb-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                    <h4 class="text-xs font-bold uppercase tracking-wide text-slate-600">Assigned Teaching Areas (AREA)</h4>
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                        <h4 class="text-xs font-bold uppercase tracking-wide text-slate-600">Assigned Teaching Areas (AREA)</h4>
+                    </div>
+                    <span class="text-[10px] text-slate-400 italic">Click tag to inspect</span>
                 </div>
-                <div>${areasHtml}</div>
+                <div class="flex flex-wrap gap-1">${areasHtml}</div>
             </div>
 
             <!-- Ward Boundaries Section -->
             <div>
-                <div class="flex items-center space-x-1.5 mb-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-                    <h4 class="text-xs font-bold uppercase tracking-wide text-slate-600">Covered Ward Units (UNIT)</h4>
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                        <h4 class="text-xs font-bold uppercase tracking-wide text-slate-600">Covered Ward Units (UNIT)</h4>
+                    </div>
+                    <span class="text-[10px] text-slate-400 italic">Click tag to inspect</span>
                 </div>
-                <div>${wardsHtml}</div>
+                <div class="flex flex-wrap gap-1">${wardsHtml}</div>
             </div>
         </div>
     `;
 }
 
-// Highlight clicked boundary (Red for AREA, Amber for WARD)
 function highlightBoundary(areaDisplayName) {
     resetMapHighlighting();
 
@@ -815,6 +851,10 @@ function highlightBoundary(areaDisplayName) {
             weight: 3,
             dashArray: isArea ? '5, 5' : null
         });
+
+        if (typeof bObj.layer.bringToFront === 'function') {
+            bObj.layer.bringToFront();
+        }
         map.fitBounds(bObj.layer.getBounds(), { padding: [50, 50], animate: true });
     }
 
@@ -856,28 +896,28 @@ function highlightBoundary(areaDisplayName) {
     panelSubtitle.innerText = isArea ? "Teaching Area Boundary" : "Ward Unit Boundary";
 
     let compsHtml = compArray.length > 0
-        ? compArray.map(c => `<span class="${isArea ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-amber-50 text-amber-700'} font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1"><i class="fa-solid fa-users mr-1"></i>${c}</span>`).join('')
+        ? compArray.map(c => `<span class="${isArea ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-amber-50 text-amber-700 border border-amber-200'} font-semibold px-2.5 py-1 rounded-lg text-xs mr-1 inline-block mb-1.5"><i class="fa-solid fa-users mr-1.5 opacity-70"></i>${c}</span>`).join('')
         : '<span class="text-slate-400 italic">No companionships assigned</span>';
 
     let housesHtml = residentHouses.length > 0
         ? residentHouses.map(h => `
-            <div onclick="highlightHouse('${h.id}')" class="p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 rounded-xl cursor-pointer transition mb-2">
-                <div class="font-semibold text-slate-800 text-xs flex items-center">
-                    <i class="fa-solid fa-house text-indigo-600 mr-2"></i> ${h.name || h.address}
+            <div onclick="highlightHouse('${h.id}')" class="p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 rounded-xl cursor-pointer transition mb-2 group">
+                <div class="font-semibold text-slate-800 text-xs flex items-center justify-between">
+                    <span><i class="fa-solid fa-house text-indigo-600 mr-2"></i> ${h.name || h.address}</span>
+                    <span class="text-[11px] text-indigo-600 opacity-0 group-hover:opacity-100 transition font-medium">Inspect &rarr;</span>
                 </div>
-                <div class="text-xs text-slate-500 mt-1 flex justify-between">
+                <div class="text-xs text-slate-500 mt-1 flex justify-between items-center">
                     <span>Areas: ${h.companionships ? h.companionships.join(', ') : 'N/A'}</span>
-                    <span class="font-medium text-indigo-600">Inspect &rarr;</span>
                 </div>
             </div>
-        `).join('')
+        `)
         : '<span class="text-slate-400 italic">No registered houses assigned to this area</span>';
 
     panelBody.innerHTML = `
         <div class="space-y-4">
             <div>
                 <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Companionships Covering This Area</h4>
-                <div>${compsHtml}</div>
+                <div class="flex flex-wrap gap-1">${compsHtml}</div>
             </div>
 
             <div>
@@ -889,18 +929,20 @@ function highlightBoundary(areaDisplayName) {
 }
 
 function resetMapHighlighting() {
-    // 1. Reset all house marker icons back to standard
     if (activeHighlightedHouseId && houseLayerMap[activeHighlightedHouseId]) {
-        houseLayerMap[activeHighlightedHouseId].setIcon(L.divIcon({
+        const marker = houseLayerMap[activeHighlightedHouseId];
+        marker.setIcon(L.divIcon({
             className: 'custom-house-marker',
             html: buildHouseMarkerHtml(false),
             iconSize: [34, 34],
             iconAnchor: [17, 17]
         }));
+        if (typeof marker.setZIndexOffset === 'function') {
+            marker.setZIndexOffset(0);
+        }
         activeHighlightedHouseId = null;
     }
 
-    // 2. Reset Ward baseline styles
     Object.keys(wardLayerMap).forEach(name => {
         const bObj = wardLayerMap[name];
         if (bObj && bObj.layer) {
@@ -914,7 +956,6 @@ function resetMapHighlighting() {
         }
     });
 
-    // 3. Reset Area baseline styles
     Object.keys(areaLayerMap).forEach(name => {
         const bObj = areaLayerMap[name];
         if (bObj && bObj.layer) {
